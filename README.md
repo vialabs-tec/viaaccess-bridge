@@ -1,72 +1,55 @@
 # ViaAccess Bridge
 
-Sidecar container that connects **Frigate** (official image) to **ViaAccess Cloud** via VADP.
+Sidecar Docker que conecta **Frigate** (imagem oficial) ao **ViaAccess Cloud** via VADP.
 
 ```
-Cameras → Frigate → MQTT (frigate/events) → viaaccess-bridge → POST /api/v1/detections → ViaAccess Cloud
+Câmeras → Frigate → MQTT → viaaccess-bridge → POST /api/v1/detections → ViaAccess Cloud
 ```
 
-ViaAccess Cloud never speaks Frigate natively; it only accepts VADP envelopes.
+## Instalação no cliente
 
-## Quick start (Docker)
+Use o pacote pronto em **[install/frigate/](install/frigate/README.md)** (compose + `.env` + template Frigate).
 
-1. Copy `docker-compose.example.yml` and `.env.example` to your deployment folder.
-2. Set `VIAACCESS_API_URL`, `VIAACCESS_API_KEY`, and `FRIGATE_ACCESS_POINT_MAP`.
-3. Run `docker compose up -d`.
+Imagem publicada: **`ghcr.io/vialabs-tec/viaaccess-bridge`**
 
-Image: `vialabs/viaaccess-bridge`
-
-## Environment
-
-| Variable | Description |
-|----------|-------------|
-| `VIAACCESS_API_URL` | ViaAccess Cloud base URL |
-| `VIAACCESS_API_KEY` | Tenant API key (`vac_…`) |
-| `FRIGATE_MQTT_URL` | MQTT broker (default `mqtt://127.0.0.1:1883`) |
-| `FRIGATE_MQTT_TOPIC_PREFIX` | Topic prefix (default `frigate`) |
-| `FRIGATE_BASE_URL` | Frigate HTTP API for snapshot URLs |
-| `FRIGATE_ACCESS_POINT_MAP` | JSON array: camera + zone → access point slug |
-| `OUTBOX_PATH` | Retry queue file when cloud is unreachable |
-| `OUTBOX_FLUSH_INTERVAL_MS` | Retry interval (default 30000) |
-| `BRIDGE_STATUS_PATH` | Optional JSON status file (used by viaaccess-lab) |
-
-### Mapping example
-
-```json
-[
-  {
-    "accessPoint": "entrada-principal",
-    "camera": "portao-principal",
-    "zone": "entrada",
-    "labels": ["person"]
-  }
-]
+```bash
+cd install/frigate
+cp .env.example .env   # API key + mapping
+docker compose pull
+docker compose up -d
 ```
 
-## Local development
+## Desenvolvimento
 
 ```bash
 npm install
-cp .env.example .env   # or point --env-file to viaaccess-lab/.env
+cp .env.example .env
 npm run dev
-```
-
-From **viaaccess-lab**:
-
-```bash
-npm run frigate:bridge
-```
-
-## Build image
-
-```bash
-npm run build
-npm pack ../viaaccess/packages/client -o viaaccess-client.tgz
-docker build -t vialabs/viaaccess-bridge:local .
-```
-
-## Tests
-
-```bash
 npm test
 ```
+
+Build local da imagem:
+
+```bash
+npm run docker:build
+```
+
+## Variáveis
+
+| Variável | Descrição |
+|----------|-----------|
+| `VIAACCESS_API_URL` | URL do ViaAccess Cloud |
+| `VIAACCESS_API_KEY` | API key do tenant (`vac_…`) |
+| `FRIGATE_MQTT_URL` | Broker MQTT (no compose: `mqtt://mqtt:1883`) |
+| `FRIGATE_BASE_URL` | API HTTP do Frigate (snapshots) |
+| `FRIGATE_ACCESS_POINT_MAP` | JSON: câmera + zona → slug do access point |
+| `OUTBOX_PATH` | Fila de retry quando o cloud está offline |
+| `BRIDGE_STATUS_PATH` | Arquivo JSON de status (opcional) |
+
+## CI / publicação
+
+O workflow [`.github/workflows/publish-image.yml`](.github/workflows/publish-image.yml) publica em `ghcr.io/<owner>/viaaccess-bridge` (owner = dono do repositório no GitHub) em push na `main` e em tags `v*`.
+
+## Licença
+
+Proprietário Via Labs.

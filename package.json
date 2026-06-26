@@ -2,7 +2,7 @@
   "name": "@vialabs/viaaccess-bridge",
   "version": "0.1.0",
   "private": true,
-  "description": "Frigate MQTT → VAEP bridge for ViaAccess Cloud",
+  "description": "Frigate MQTT → VADP bridge for ViaAccess Cloud",
   "type": "module",
   "bin": {
     "viaaccess-bridge": "./dist/main.js"
@@ -12,10 +12,9 @@
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file=.env dist/main.js",
     "test": "vitest run",
-    "docker:build": "docker build -t vialabs/viaaccess-bridge:local ."
+    "docker:build": "docker build -t ghcr.io/vialabs-tec/viaaccess-bridge:local ."
   },
   "dependencies": {
-    "@viaaccess/client": "file:../viaaccess/packages/client",
     "mqtt": "^5.15.1"
   },
   "devDependencies": {

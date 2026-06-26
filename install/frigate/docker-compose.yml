@@ -1,13 +1,3 @@
-# Client install: Frigate + MQTT + ViaAccess Bridge
-#
-# Prerequisites:
-# - ViaAccess tenant API key (vac_…)
-# - FRIGATE_ACCESS_POINT_MAP matching your cameras/zones
-#
-# Usage:
-#   cp .env.example .env   # fill VIAACCESS_API_KEY, mapping, etc.
-#   docker compose up -d
-
 services:
   mqtt:
     image: eclipse-mosquitto:2
@@ -18,30 +8,37 @@ services:
   frigate:
     image: ghcr.io/blakeblackshear/frigate:stable
     restart: unless-stopped
-    shm_size: "256mb"
+    shm_size: "512mb"
     ports:
       - "5050:5000"
     volumes:
       - ./frigate/config:/config
       - ./frigate/storage:/media/frigate
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
     depends_on:
       - mqtt
     environment:
       FRIGATE_RTSP_PASSWORD: "password"
 
   viaaccess-bridge:
-    image: vialabs/viaaccess-bridge:latest
+    image: ${VIAACCESS_BRIDGE_IMAGE:-ghcr.io/vialabs-tec/viaaccess-bridge:latest}
     restart: unless-stopped
     env_file: .env
     environment:
       FRIGATE_MQTT_URL: mqtt://mqtt:1883
       FRIGATE_BASE_URL: http://frigate:5000
+      BRIDGE_STATUS_PATH: /runtime/status.json
       OUTBOX_PATH: /data/outbox.jsonl
     volumes:
       - bridge-data:/data
+      - bridge-runtime:/runtime
     depends_on:
       - mqtt
       - frigate
 
 volumes:
   bridge-data:
+  bridge-runtime:
