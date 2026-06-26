@@ -1,6 +1,6 @@
-# Instalação ViaAccess + Frigate (cliente)
+# Instalação ViaAccess + Frigate
 
-Pacote para rodar na **rede do condomínio / cliente**: Frigate oficial + MQTT + **viaaccess-bridge** → ViaAccess Cloud.
+Pacote para rodar na **rede local do cliente**: Frigate + MQTT + **viaaccess-bridge** → ViaAccess.
 
 ## Pré-requisitos
 
@@ -32,7 +32,7 @@ Preencha:
 
 | Variável | Valor |
 |----------|--------|
-| `VIAACCESS_API_URL` | URL do cloud (ex. `https://api.viaaccess.com.br`) |
+| `VIAACCESS_API_URL` | URL da API (ex. `https://api.viaaccess.com.br`) |
 | `VIAACCESS_API_KEY` | API key do tenant |
 | `FRIGATE_ACCESS_POINT_MAP` | JSON: câmera + zona → slug do access point |
 
@@ -61,7 +61,7 @@ docker compose up -d
 
 ### 5. Validar
 
-1. No sistema de gestão (ClubeVia, etc.), registre uma validação de entrada no ponto de acesso.
+1. No seu app de gestão, registre uma validação de entrada no ponto de acesso (`POST /api/v1/validations`).
 2. Provoke passagem na zona da câmera.
 3. Confira no ViaAccess: acesso **autorizado** ou alerta.
 
@@ -72,13 +72,13 @@ docker compose pull viaaccess-bridge
 docker compose up -d viaaccess-bridge
 ```
 
-Imagem: `ghcr.io/vialabs-tec/viaaccess-bridge` (tags `latest` ou versão semver).
+Imagem padrão: `ghcr.io/vialabs-tec/viaaccess-bridge:latest`. Para outra tag ou registry, defina `VIAACCESS_BRIDGE_IMAGE` no `.env`.
 
-## Integração de software (Identity Provider)
+## Integração de software
 
-O ERP / app do clube **não** instala este pacote. Ele só chama:
+Quem integra apenas identidade (ERP, app mobile) **não** instala este pacote. Use o SDK ou a API ViaAccess:
 
-- `POST /api/v1/validations` — quando o sócio valida QR
-- Webhooks ou SSE — para receber `access.authorized` / `access.unauthorized`
+- `POST /api/v1/validations` — autorizar passagem
+- Webhooks — `access.authorized` / `access.unauthorized`
 
-Documentação: painel ViaAccess → `/docs`
+Documentação: [viaaccess.dev/docs](https://viaaccess.dev/docs)
