@@ -1,0 +1,14 @@
+{
+  "name": "viaaccess-frigate-install",
+  "private": true,
+  "description": "Helper scripts for local Frigate + bridge install",
+  "scripts": {
+    "webcam:list": "bash scripts/webcam-list-devices.sh",
+    "webcam:stream": "bash scripts/webcam-to-go2rtc.sh",
+    "compose:up": "docker compose up -d --build",
+    "compose:build": "docker compose build viaaccess-bridge",
+    "compose:down": "docker compose down",
+    "compose:logs": "docker compose logs -f viaaccess-bridge",
+    "compose:logs:frigate": "docker compose logs -f frigate"
+  }
+}

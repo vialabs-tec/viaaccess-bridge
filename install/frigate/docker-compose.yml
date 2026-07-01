@@ -2,8 +2,20 @@ services:
   mqtt:
     image: eclipse-mosquitto:2
     restart: unless-stopped
+    ports:
+      # Opcional: bridge em npm run dev no host ou debug com mosquitto_sub
+      - "127.0.0.1:1883:1883"
     volumes:
       - ./mosquitto:/mosquitto/config:ro
+
+  # Webcam do Mac: ffmpeg publica em rtsp://127.0.0.1:8555/portao-principal
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8555:8555"
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
 
   frigate:
     image: ghcr.io/blakeblackshear/frigate:stable
@@ -11,6 +23,7 @@ services:
     shm_size: "512mb"
     ports:
       - "5050:5000"
+      - "8554:8554"
     volumes:
       - ./frigate/config:/config
       - ./frigate/storage:/media/frigate
@@ -20,13 +33,21 @@ services:
           size: 1000000000
     depends_on:
       - mqtt
+      - mediamtx
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       FRIGATE_RTSP_PASSWORD: "password"
 
   viaaccess-bridge:
-    image: ${VIAACCESS_BRIDGE_IMAGE:-ghcr.io/vialabs-tec/viaaccess-bridge:latest}
+    image: ${VIAACCESS_BRIDGE_IMAGE:-viaaccess-bridge:local}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       FRIGATE_MQTT_URL: mqtt://mqtt:1883
       FRIGATE_BASE_URL: http://frigate:5000

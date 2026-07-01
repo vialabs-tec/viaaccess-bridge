@@ -29,4 +29,9 @@ export type FrigateAccessPointMapping = {
   zone?: string;
   /** Object labels to accept (default: person) */
   labels?: string[];
+  /**
+   * Debounce continuous motion into presence sessions (seconds).
+   * When set, only the first detection per session is forwarded to ViaAccess.
+   */
+  presenceSessionGapSeconds?: number;
 };

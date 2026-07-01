@@ -90,7 +90,17 @@ client.on("connect", () => {
   void outbox.flush(deliver);
 });
 
+let mqttProcessing: Promise<void> = Promise.resolve();
+
 client.on("message", (_topic, buffer) => {
+  mqttProcessing = mqttProcessing
+    .then(() => processMqttMessage(buffer))
+    .catch((error) => {
+      console.error("[viaaccess-bridge] mqtt handler error", error);
+    });
+});
+
+async function processMqttMessage(buffer: Buffer): Promise<void> {
   let payload: FrigateEventsMessage;
   try {
     payload = JSON.parse(buffer.toString("utf8")) as FrigateEventsMessage;
@@ -111,21 +121,19 @@ client.on("message", (_topic, buffer) => {
     return;
   }
 
-  void (async () => {
-    for (const event of events) {
-      const providerEventId = event.metadata?.providerEventId;
-      const idempotencyKey =
-        typeof providerEventId === "string" && providerEventId
-          ? `frigate:${providerEventId}:${event.event}:${event.accessPointId}`
-          : crypto.randomUUID();
+  for (const event of events) {
+    const providerEventId = event.metadata?.providerEventId;
+    const idempotencyKey =
+      typeof providerEventId === "string" && providerEventId
+        ? `frigate:${providerEventId}:${event.event}:${event.accessPointId}`
+        : crypto.randomUUID();
 
-      const ok = await forwardDetection(event, idempotencyKey);
-      if (!ok) {
-        await outbox.enqueue({ idempotencyKey, body: event });
-      }
+    const ok = await forwardDetection(event, idempotencyKey);
+    if (!ok) {
+      await outbox.enqueue({ idempotencyKey, body: event });
     }
-  })();
-});
+  }
+}
 
 client.on("error", (error) => {
   console.error("[viaaccess-bridge] mqtt error", error);

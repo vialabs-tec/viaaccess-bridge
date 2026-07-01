@@ -3,11 +3,10 @@ mqtt:
   host: mqtt
   port: 1883
 
-# Host: npm run webcam:stream → MediaMTX :8555; go2rtc lê de mediamtx
+# Host publishes webcam via: npm run webcam:stream (ffmpeg → :8554)
 go2rtc:
   streams:
-    portao-principal:
-      - rtsp://mediamtx:8555/portao-principal
+    portao-principal: []
 
 detectors:
   cpu1:
@@ -48,4 +47,3 @@ snapshots:
   enabled: true
   retain:
     default: 1
-version: 0.17-0

@@ -1,0 +1,10 @@
+# RTSP relay: host ffmpeg publishes here; Frigate go2rtc reads from mediamtx:8555
+rtspAddress: :8555
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+
+paths:
+  portao-principal:
+    source: publisher

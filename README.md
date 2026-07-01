@@ -36,6 +36,7 @@ Crie o tenant, o ponto de acesso (slug) e a API key no painel ViaAccess antes de
 | `FRIGATE_MQTT_URL` | Broker MQTT (no compose: `mqtt://mqtt:1883`) |
 | `FRIGATE_BASE_URL` | API HTTP do Frigate (snapshots) |
 | `FRIGATE_ACCESS_POINT_MAP` | JSON: câmera + zona → slug do access point |
+| `presenceSessionGapSeconds` | (por mapping) debounce de movimento contínuo no interior — ver README |
 | `OUTBOX_PATH` | Fila de retry quando a API está offline |
 | `BRIDGE_STATUS_PATH` | Arquivo JSON de status (opcional) |
 

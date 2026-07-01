@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resetPresenceSessions } from "./presence-session.js";
 import { translateFrigateToVadp } from "./to-vadp.js";
 import type { FrigateEventsMessage } from "./types.js";
 
@@ -87,6 +88,74 @@ describe("translateFrigateToVadp", () => {
 
     expect(result.events).toEqual([]);
     expect(result.ignoredReason).toBe("no_mapping_match");
+  });
+
+  it("debounces interior motion with presenceSessionGapSeconds", () => {
+    resetPresenceSessions();
+
+    const interiorMappings = [
+      {
+        accessPoint: "interior-principal",
+        camera: "salao",
+        zone: "interior",
+        labels: ["person"],
+        presenceSessionGapSeconds: 20,
+      },
+    ];
+
+    const enter = translateFrigateToVadp(
+      basePayload({
+        before: {
+          id: "evt-1",
+          camera: "salao",
+          frame_time: 1_700_000_000,
+          label: "person",
+          entered_zones: [],
+          current_zones: [],
+        },
+        after: {
+          id: "evt-1",
+          camera: "salao",
+          frame_time: 1_700_000_001,
+          label: "person",
+          entered_zones: ["interior"],
+          current_zones: ["interior"],
+          score: 0.9,
+        },
+      }),
+      { mappings: interiorMappings, baseUrl: null },
+    );
+    expect(enter.events).toHaveLength(1);
+    expect(enter.events[0]?.metadata).toMatchObject({
+      presencePhase: "session_started",
+      frigateZone: "interior",
+    });
+
+    const followUp = translateFrigateToVadp(
+      basePayload({
+        type: "update",
+        before: {
+          id: "evt-1",
+          camera: "salao",
+          frame_time: 1_700_000_001,
+          label: "person",
+          entered_zones: ["interior"],
+          current_zones: ["interior"],
+        },
+        after: {
+          id: "evt-1",
+          camera: "salao",
+          frame_time: 1_700_000_005,
+          label: "person",
+          entered_zones: ["interior"],
+          current_zones: ["interior"],
+          score: 0.9,
+        },
+      }),
+      { mappings: interiorMappings, baseUrl: null },
+    );
+    expect(followUp.events).toEqual([]);
+    expect(followUp.ignoredReason).toBe("presence_session_suppressed");
   });
 
   it("supports camera-only mapping on new events", () => {
