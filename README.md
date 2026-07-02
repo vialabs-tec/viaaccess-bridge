@@ -12,6 +12,8 @@ O bridge **não** faz reconhecimento facial nem cadastro de usuários. Ele tradu
 
 Pacote pronto com Frigate + MQTT + bridge: **[install/frigate/](install/frigate/README.md)**.
 
+Leitor USB + QR dinâmico Identity (Phase 1b): **[install/identity-qr-reader/](install/identity-qr-reader/README.md)**.
+
 Imagem Docker:
 
 ```text
