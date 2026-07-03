@@ -2,10 +2,11 @@
   "name": "@vialabs/identity-qr-reader",
   "version": "0.1.0",
   "private": true,
-  "description": "Reference USB scanner → ViaAccess Identity dynamic QR redeem",
+  "description": "Reference-only USB/HTTP scanner → ViaAccess Identity dynamic QR redeem (not production hardware support)",
   "type": "module",
   "scripts": {
     "start": "tsx --env-file=.env src/scan-redeem.ts",
+    "start:http": "tsx --env-file=.env src/turnstile-http.ts",
     "test": "vitest run"
   },
   "devDependencies": {
