@@ -18,7 +18,7 @@ func TestIsFresh(t *testing.T) {
 }
 
 func TestIsFreshRejectsEmpty(t *testing.T) {
-	if Snapshot{}.IsFresh(time.Now()) {
+	if (Snapshot{}).IsFresh(time.Now()) {
 		t.Fatal("expected not fresh")
 	}
 }

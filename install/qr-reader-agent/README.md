@@ -19,18 +19,145 @@ make arm64          # bin/viaaccess-qr-agent-linux-arm64 (Pi)
 make test
 ```
 
-## Primeiro boot (setup)
+## Primeiro boot (provisionamento)
 
-Sem `config.json` configurado, o agent sobe em modo setup:
+Sem `config.json` com `"configured": true`, o agent sobe em **modo setup** e expõe a UI em `http://<ip>:3710/setup`.
 
-1. Conecte o appliance na rede
-2. Abra `http://<ip>:3710/setup`
-3. Informe URL do Identity e device key `idb_…` (admin do ponto → QR dinâmico no leitor)
-4. Salve e reinicie o serviço
-
-Config padrão: `/etc/viaaccess-qr-reader/config.json` (permissões `0600`).
+Config padrão em produção: `/etc/viaaccess-qr-reader/config.json` (permissões `0600`).
 
 PIN de fábrica (opcional): variável `SETUP_PIN` ou flag `--setup-pin`.
+
+### Fluxo recomendado: QR zero-SSH
+
+Um leitor novo é provisionado sem SSH. O admin gera um token de uso único; o técnico cola no appliance na rede local.
+
+```
+Admin (Identity)                    Appliance (rede local)
+     │                                      │
+     │  Provisionar (QR) → clm_… (~15 min)  │
+     │ ───────────────────────────────────► │  :3710/setup → aba Provisionar
+     │                                      │  POST Identity /api/bridge/provision/claim
+     │                                      │  recebe idb_… + defaults
+     │                                      │  entra em ONLINE (sem reinício)
+```
+
+**1. Admin (Identity)**
+
+1. Ponto em modo **QR dinâmico no leitor** (`DYNAMIC_QR_AT_READER`).
+2. Admin → ponto → **Leitores (bridge)**.
+3. Informe o nome do leitor → **Provisionar (QR)**.
+4. Escaneie o QR ou copie a URL `…/bridge/provision?t=clm_…` (válida por ~15 minutos).
+
+Cada token `clm_…` é **uso único**: provisiona um appliance. Para outro leitor, gere outro QR.
+
+**2. Appliance**
+
+1. Conecte o Pi/leitor na rede (mesma LAN do técnico).
+2. Abra `http://<ip-do-appliance>:3710/setup`.
+3. Aba **Provisionar (QR)**.
+4. Cole a **URL completa** ou só o token `clm_…`.
+   - Se colar só `clm_…`, informe também a URL do Identity.
+5. Ajuste relé GPIO se necessário → **Provisionar e testar**.
+6. O agent **ativa o modo operação automaticamente** (não precisa reiniciar o processo).
+
+**3. Validar**
+
+```bash
+curl -s http://<ip>:3710/health
+```
+
+Esperado: `"configured": true`, `"operationMode": "ONLINE"`, `"identityReachable": true`.
+
+Teste de passagem (simula leitor HTTP):
+
+```bash
+curl -s -X POST http://<ip>:3710/scan \
+  -H 'Content-Type: application/json' \
+  -d '{"qrUrl":"URL_DO_QR_DINAMICO_DO_PWA"}'
+```
+
+Resposta esperada com acesso liberado: `"correlationOutcome": "AUTHORIZED"`.
+
+### Fallback: provisionamento manual
+
+Se o QR expirou ou não puder ser escaneado:
+
+1. Admin → **Nova chave** → copie `idb_…` (exibida uma vez).
+2. `http://<ip>:3710/setup` → aba **Manual**.
+3. URL do Identity, device key `idb_…`, slug do ponto (opcional se já vinculado à chave).
+4. Salve; o agent volta ao modo operação automaticamente.
+
+### Reprovisionar após revogar a chave
+
+Se o admin **revogar** a device key `idb_…` no Identity:
+
+1. Em até ~60s (sync de policy) ou no próximo `POST /scan`, o agent detecta `401` / `BRIDGE_DISABLED`.
+2. Ele **limpa a chave local**, grava `configured: false` e reabre **`/setup`** sem reiniciar o processo.
+3. No admin, gere um **novo** QR (**Provisionar (QR)**). Tokens `clm_…` antigos não podem ser reutilizados.
+4. No appliance, abra `http://<ip>:3710/setup` → cole o novo `clm_…` → provisionar.
+
+Log esperado: `device key invalid (…) — setup mode at http://…:3710/setup`.
+
+`/health` em modo setup:
+
+```json
+{"ok": false, "configured": false, "setupRequired": true}
+```
+
+### Endpoints de setup (modo não configurado)
+
+| Método | Path | Uso |
+|--------|------|-----|
+| `GET` | `/setup` | UI web (abas Provisionar e Manual) |
+| `GET` | `/api/setup/status` | PIN obrigatório? |
+| `POST` | `/api/setup/provision` | Consome `clm_…` via Identity e grava config |
+| `POST` | `/api/setup` | Salva config manual (`idb_…`) |
+
+## Desenvolvimento no Mac
+
+No macOS use arquivos locais em `.dev/` em vez de `/etc/viaaccess-qr-reader/`:
+
+```bash
+cd install/qr-reader-agent
+mkdir -p .dev
+```
+
+**Primeiro boot (testar provisionamento QR):**
+
+```bash
+go run ./cmd/viaaccess-qr-agent \
+  --config ./.dev/config.json \
+  --policy ./.dev/policy-snapshot.json \
+  --outbox ./.dev/outbox.json \
+  --nonce ./.dev/consumed-intents.json
+```
+
+Abra `http://127.0.0.1:3710/setup`, provisione com um `clm_…` do admin local (`http://localhost:3100`). O modo operação ativa sozinho após salvar.
+
+**Já configurado** — crie `config.dev.json` (gitignored) e use:
+
+```bash
+make run
+```
+
+Equivalente a `go run ./cmd/viaaccess-qr-agent --config ./config.dev.json --stdin`.
+
+Exemplo de `config.dev.json`:
+
+```json
+{
+  "configured": true,
+  "identityUrl": "http://localhost:3100",
+  "deviceKey": "idb_…",
+  "accessPointSlug": "main-entrance",
+  "emitDetection": true,
+  "httpHost": "127.0.0.1",
+  "httpPort": 3710,
+  "relay": { "enabled": false }
+}
+```
+
+No Mac, `relaySimulated: true` em `/health` é esperado (sem GPIO físico).
 
 ## Modo operação
 
@@ -56,6 +183,7 @@ Variáveis em `/etc/viaaccess-qr-reader/env` (opcional, sobrescrevem JSON):
 | `GET` | `/health` | Modo operação, sync, outbox, último scan — ver [docs/contingency-mode.md](docs/contingency-mode.md) |
 | `POST` | `/scan` | Body JSON `{ "qrUrl": "…" }` |
 | `GET` | `/setup` | UI de provisionamento (só sem config) |
+| `POST` | `/api/setup/provision` | Provisionamento via token `clm_…` (só sem config) |
 
 ### Leitor USB (keyboard wedge)
 
@@ -117,8 +245,9 @@ sudo systemctl enable --now viaaccess-qr-agent
 | USB stdin | `scan-redeem.ts` | `--stdin` |
 | Contingency verify | — | `internal/contingency` |
 | Policy sync + flush | — | `internal/syncclient` |
+| Provisionamento QR | — | `internal/setup` (`POST /api/setup/provision`) |
 
 ## Ver também
 
-- Identity: `POST /api/bridge/intent/redeem` — OpenAPI em viaaccess-identity
+- Identity: `POST /api/bridge/provision/claim`, `POST /api/bridge/intent/redeem` — OpenAPI em viaaccess-identity
 - [identity-qr-bridge.md](https://github.com/vialabs-tec/viaaccess-identity/blob/main/docs/installation/identity-qr-bridge.md)

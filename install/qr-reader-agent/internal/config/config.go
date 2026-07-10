@@ -16,6 +16,8 @@ type RuntimeConfig struct {
 	Configured bool   `json:"configured"`
 	IdentityURL string `json:"identityUrl"`
 	DeviceKey   string `json:"deviceKey"`
+	DeviceID    string `json:"deviceId,omitempty"`
+	ProvisionedAt string `json:"provisionedAt,omitempty"`
 	AccessPointSlug string `json:"accessPointSlug,omitempty"`
 	EmitDetection bool `json:"emitDetection"`
 	DebounceMs int `json:"debounceMs"`
@@ -89,6 +91,8 @@ func LoadFromFile(path string) (RuntimeConfig, error) {
 func (c RuntimeConfig) Normalize() RuntimeConfig {
 	c.IdentityURL = strings.TrimRight(strings.TrimSpace(c.IdentityURL), "/")
 	c.DeviceKey = strings.TrimSpace(c.DeviceKey)
+	c.DeviceID = strings.TrimSpace(c.DeviceID)
+	c.ProvisionedAt = strings.TrimSpace(c.ProvisionedAt)
 	c.AccessPointSlug = strings.TrimSpace(c.AccessPointSlug)
 	c.HTTPHost = strings.TrimSpace(c.HTTPHost)
 	if c.HTTPHost == "" {

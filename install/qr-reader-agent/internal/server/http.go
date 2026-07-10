@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"io"
@@ -51,11 +52,14 @@ func NewMux(opts Options) http.Handler {
 				}
 				return appconfig.SaveToFile(opts.ConfigPath, cfg)
 			},
-			Ping: setup.PingIdentity,
+			Ping: func(ctx context.Context, identityURL string) error {
+				return setup.PingIdentity(ctx, identityURL, nil)
+			},
 		}
 		mux.HandleFunc("GET /setup", serveSetupPage)
 		mux.HandleFunc("GET /api/setup/status", setupHandler.HandleStatus)
 		mux.HandleFunc("POST /api/setup", setupHandler.HandleSave)
+		mux.HandleFunc("POST /api/setup/provision", setupHandler.HandleProvision)
 		mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"ok":            false,
@@ -116,6 +120,10 @@ func NewMux(opts Options) http.Handler {
 	mux.HandleFunc("POST /", scanHandler)
 
 	return mux
+}
+
+func pingIdentityURL(ctx context.Context, identityURL string) error {
+	return setup.PingIdentity(ctx, identityURL, nil)
 }
 
 func serveSetupPage(w http.ResponseWriter, _ *http.Request) {

@@ -22,8 +22,6 @@ import (
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/relay"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/scan"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/server"
-	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/setup"
-	syncclient "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/syncclient"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/unlock"
 )
 
@@ -81,36 +79,28 @@ func main() {
 		state.SetRelaySimulated(!relayGPIOAvailable())
 	}
 
-	onConfigSaved := func(saved appconfig.RuntimeConfig) error {
-		return appconfig.SaveToFile(*configPath, saved)
-	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	mux := server.NewMux(server.Options{
-		Config:        cfg,
-		ConfigPath:    *configPath,
-		SetupPIN:      *setupPIN,
-		State:         state.Snapshot,
-		Policy:        policyHolder.Get,
-		OperationMode: state.OperationMode,
-		Outbox:        outboxStore,
-		Nonce:         nonceStore,
-		OnScanComplete: func(path agent.ScanPath, qrURL string, result redeem.Result) {
-			state.RecordScan(path, result)
-			log.Printf("[%s] %s", path, redeem.FormatLog(result))
-		},
-		OnConfigSaved: onConfigSaved,
-		RelayService:  relayService,
+	app := server.NewApp(server.AppDeps{
+		RootCtx:      ctx,
+		ConfigPath:   *configPath,
+		PolicyPath:   *policyPath,
+		SetupPIN:     *setupPIN,
+		Config:       cfg,
+		State:        state,
+		PolicyHolder: policyHolder,
+		Outbox:       outboxStore,
+		Nonce:        nonceStore,
+		RelayService: relayService,
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.HTTPHost, cfg.HTTPPort)
 	httpServer := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           app,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -121,12 +111,9 @@ func main() {
 	if cfg.Configured {
 		if err := cfg.ValidateOperational(); err != nil {
 			log.Printf("warning: %v", err)
-		} else {
-			go probeIdentity(ctx, cfg.IdentityURL, state)
-			go runSyncLoop(ctx, cfg, policyHolder, *policyPath, outboxStore, state)
 		}
 		if *stdinMode {
-			go runStdinScanner(ctx, cfg, policyHolder, outboxStore, nonceStore, relayService, state)
+			go runStdinScanner(ctx, app, policyHolder, outboxStore, nonceStore, relayService, state)
 		}
 		log.Printf(
 			"viaaccess-qr-agent listening on http://%s (mode=%s stdin=%v)",
@@ -144,40 +131,20 @@ func main() {
 	_ = httpServer.Shutdown(shutdownCtx)
 }
 
+type configSource interface {
+	Config() appconfig.RuntimeConfig
+}
+
 func runStdinScanner(
 	ctx context.Context,
-	cfg appconfig.RuntimeConfig,
+	cfgSource configSource,
 	policyHolder *policy.Holder,
 	outboxStore *outbox.Store,
 	nonceStore *contingency.NonceStore,
 	relayService *relay.Service,
 	state *agent.State,
 ) {
-	redeemClient := redeem.NewClient(redeem.ClientConfig{
-		IdentityURL:   cfg.IdentityURL,
-		DeviceKey:     cfg.DeviceKey,
-		EmitDetection: cfg.EmitDetection,
-	}, nil)
-	var unlockClient scan.UnlockPoster
-	if cfg.UnlockWebhookURL != "" {
-		unlockClient = unlock.NewClient(cfg.UnlockWebhookURL, nil)
-	}
 	debounce := &scan.Debounce{}
-	handler := &scan.Handler{
-		Config:        cfg,
-		Redeem:        redeemClient,
-		Unlock:        unlockClient,
-		Relay:         relayService,
-		Debounce:      debounce,
-		Policy:        policyHolder.Get,
-		OperationMode: state.OperationMode,
-		Outbox:        outboxStore,
-		Nonce:         nonceStore,
-		OnScanComplete: func(path agent.ScanPath, qrURL string, result redeem.Result) {
-			state.RecordScan(path, result)
-			log.Printf("[%s] %s", path, redeem.FormatLog(result))
-		},
-	}
 
 	log.Println("stdin scanner active — scan QR from USB wedge")
 	scanner := bufio.NewScanner(os.Stdin)
@@ -191,93 +158,42 @@ func runStdinScanner(
 		if line == "" {
 			continue
 		}
+
+		cfg := cfgSource.Config()
+		if !cfg.Configured {
+			log.Println("stdin scan ignored — appliance in setup mode")
+			continue
+		}
+
+		redeemClient := redeem.NewClient(redeem.ClientConfig{
+			IdentityURL:   cfg.IdentityURL,
+			DeviceKey:     cfg.DeviceKey,
+			EmitDetection: cfg.EmitDetection,
+		}, nil)
+		var unlockClient scan.UnlockPoster
+		if cfg.UnlockWebhookURL != "" {
+			unlockClient = unlock.NewClient(cfg.UnlockWebhookURL, nil)
+		}
+		handler := &scan.Handler{
+			Config:        cfg,
+			Redeem:        redeemClient,
+			Unlock:        unlockClient,
+			Relay:         relayService,
+			Debounce:      debounce,
+			Policy:        policyHolder.Get,
+			OperationMode: state.OperationMode,
+			Outbox:        outboxStore,
+			Nonce:         nonceStore,
+			OnScanComplete: func(path agent.ScanPath, qrURL string, result redeem.Result) {
+				state.RecordScan(path, result)
+				log.Printf("[%s] %s", path, redeem.FormatLog(result))
+			},
+		}
+
 		_, _ = handler.HandleScan(ctx, line, "")
 	}
 	if err := scanner.Err(); err != nil {
 		log.Printf("stdin scanner error: %v", err)
-	}
-}
-
-func probeIdentity(ctx context.Context, identityURL string, state *agent.State) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-	for {
-		pingCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-		err := setup.PingIdentity(pingCtx, identityURL, nil)
-		cancel()
-		state.SetIdentityReachable(err == nil)
-		if err != nil {
-			log.Printf("identity probe failed: %v (mode=%s)", err, state.OperationMode())
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
-func runSyncLoop(
-	ctx context.Context,
-	cfg appconfig.RuntimeConfig,
-	policyHolder *policy.Holder,
-	policyPath string,
-	outboxStore *outbox.Store,
-	state *agent.State,
-) {
-	client := syncclient.NewClient(syncclient.ClientConfig{
-		IdentityURL:   cfg.IdentityURL,
-		DeviceKey:     cfg.DeviceKey,
-		EmitDetection: cfg.EmitDetection,
-	}, nil)
-
-	ticker := time.NewTicker(60 * time.Second)
-	defer ticker.Stop()
-
-	syncOnce := func() {
-		syncCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-
-		snap, err := client.FetchPolicy(syncCtx)
-		if err != nil {
-			log.Printf("policy sync failed: %v", err)
-			return
-		}
-		snap.MaxStaleHours = cfg.Contingency.MaxPolicyStaleHours
-		if err := policy.SaveToFile(policyPath, snap); err != nil {
-			log.Printf("policy save failed: %v", err)
-		} else {
-			policyHolder.Set(snap)
-			state.SetPolicy(snap)
-			log.Printf("policy synced: grantVersion=%s members=%d", snap.GrantVersion, snap.MemberGrantCount)
-		}
-
-		pending := outboxStore.PendingEvents()
-		if len(pending) == 0 {
-			return
-		}
-
-		flushCtx, flushCancel := context.WithTimeout(ctx, 30*time.Second)
-		defer flushCancel()
-		result, err := client.FlushOutbox(flushCtx, pending)
-		if err != nil {
-			log.Printf("outbox flush failed: %v", err)
-			return
-		}
-		if result.Flushed > 0 {
-			_ = outboxStore.MarkFlushed(time.Now().UTC())
-			log.Printf("outbox flushed: %d skipped=%d", result.Flushed, result.Skipped)
-		}
-	}
-
-	syncOnce()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			syncOnce()
-		}
 	}
 }
 

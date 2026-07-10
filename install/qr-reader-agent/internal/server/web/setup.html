@@ -11,9 +11,29 @@
     h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
     p { color: #9aa7b5; font-size: 0.9rem; }
     label { display: block; margin-top: 1rem; font-size: 0.85rem; }
-    input, select { width: 100%; margin-top: 0.35rem; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: inherit; box-sizing: border-box; }
+    label.check {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      cursor: pointer;
+    }
+    input, select, textarea { width: 100%; margin-top: 0.35rem; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: inherit; box-sizing: border-box; }
+    label.check input[type="checkbox"] {
+      width: 1rem;
+      height: 1rem;
+      margin: 0;
+      padding: 0;
+      flex-shrink: 0;
+      accent-color: #3b82f6;
+    }
+    textarea { min-height: 4.5rem; font-family: ui-monospace, monospace; font-size: 0.8rem; }
     button { margin-top: 1.25rem; width: 100%; padding: 0.7rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
     button:disabled { opacity: 0.6; cursor: wait; }
+    .tabs { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    .tab { flex: 1; padding: 0.55rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: #9aa7b5; cursor: pointer; }
+    .tab.active { border-color: #3b82f6; color: #e8edf2; }
+    .panel { display: none; }
+    .panel.active { display: block; }
     .msg { margin-top: 1rem; font-size: 0.9rem; }
     .err { color: #f87171; }
     .ok { color: #4ade80; }
@@ -24,61 +44,150 @@
 <body>
   <main>
     <h1>ViaAccess QR Reader</h1>
-    <p>Provisionamento do appliance. Crie a device key <code>idb_…</code> no admin do Identity (ponto em QR dinâmico no leitor).</p>
+    <p>Provisionamento do appliance na rede local.</p>
 
-    <form id="setup-form">
-      <label>PIN de fábrica (se configurado)
-        <input name="pin" type="password" autocomplete="off" />
-      </label>
-      <label>URL do Identity
-        <input name="identityUrl" required placeholder="https://identity.cliente.com" />
-      </label>
-      <label>Device key (idb_…)
-        <input name="deviceKey" required placeholder="idb_…" autocomplete="off" />
-      </label>
-      <label>Slug do ponto (opcional)
-        <input name="accessPointSlug" placeholder="entrada-principal" />
-      </label>
-      <fieldset>
-        <legend>Relé</legend>
-        <label>
-          <input name="relayEnabled" type="checkbox" checked />
-          Acionar relé GPIO após autorização
+    <div class="tabs">
+      <button type="button" class="tab active" data-tab="provision">Provisionar (QR)</button>
+      <button type="button" class="tab" data-tab="manual">Manual</button>
+    </div>
+
+    <div id="panel-provision" class="panel active">
+      <form id="provision-form">
+        <label>PIN de fábrica (se configurado)
+          <input name="pin" type="password" autocomplete="off" />
         </label>
-        <label>GPIO pin
-          <input name="relayGpioPin" type="number" value="17" min="1" />
+        <label>URL ou token de provisionamento
+          <textarea name="claimInput" required placeholder="https://identity…/bridge/provision?t=clm_… ou clm_…"></textarea>
         </label>
-        <label>Pulso (ms)
-          <input name="relayPulseMs" type="number" value="3000" min="100" />
+        <label>URL do Identity (só se colar token clm_ sem URL)
+          <input name="identityUrl" placeholder="https://identity.cliente.com" />
         </label>
-      </fieldset>
-      <label>
-        <input name="emitDetection" type="checkbox" checked />
-        Emitir detection no ViaAccess (recomendado sem câmera na porta)
-      </label>
-      <button type="submit">Salvar e testar conexão</button>
-      <div id="msg" class="msg"></div>
-    </form>
+        <fieldset>
+          <legend>Relé</legend>
+          <label class="check">
+            <input name="relayEnabled" type="checkbox" checked />
+            <span>Acionar relé GPIO após autorização</span>
+          </label>
+          <label>GPIO pin
+            <input name="relayGpioPin" type="number" value="17" min="1" />
+          </label>
+          <label>Pulso (ms)
+            <input name="relayPulseMs" type="number" value="3000" min="100" />
+          </label>
+        </fieldset>
+        <button type="submit">Provisionar e testar</button>
+        <div id="provision-msg" class="msg"></div>
+      </form>
+    </div>
+
+    <div id="panel-manual" class="panel">
+      <form id="setup-form">
+        <label>PIN de fábrica (se configurado)
+          <input name="pin" type="password" autocomplete="off" />
+        </label>
+        <label>URL do Identity
+          <input name="identityUrl" required placeholder="https://identity.cliente.com" />
+        </label>
+        <label>Device key (idb_…)
+          <input name="deviceKey" required placeholder="idb_…" autocomplete="off" />
+        </label>
+        <label>Slug do ponto (opcional)
+          <input name="accessPointSlug" placeholder="entrada-principal" />
+        </label>
+        <fieldset>
+          <legend>Relé</legend>
+          <label class="check">
+            <input name="relayEnabled" type="checkbox" checked />
+            <span>Acionar relé GPIO após autorização</span>
+          </label>
+          <label>GPIO pin
+            <input name="relayGpioPin" type="number" value="17" min="1" />
+          </label>
+          <label>Pulso (ms)
+            <input name="relayPulseMs" type="number" value="3000" min="100" />
+          </label>
+        </fieldset>
+        <label class="check">
+          <input name="emitDetection" type="checkbox" checked />
+          <span>Emitir detection no ViaAccess (recomendado sem câmera na porta)</span>
+        </label>
+        <button type="submit">Salvar e testar conexão</button>
+        <div id="manual-msg" class="msg"></div>
+      </form>
+    </div>
   </main>
   <script>
-    const form = document.getElementById('setup-form');
-    const msg = document.getElementById('msg');
-    form.addEventListener('submit', async (e) => {
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    function relayPayload(fd) {
+      return {
+        relayEnabled: fd.get('relayEnabled') === 'on',
+        relayGpioPin: Number(fd.get('relayGpioPin') || 17),
+        relayPulseMs: Number(fd.get('relayPulseMs') || 3000),
+      };
+    }
+
+    const provisionForm = document.getElementById('provision-form');
+    const provisionMsg = document.getElementById('provision-msg');
+    provisionForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      msg.textContent = '';
-      msg.className = 'msg';
-      const fd = new FormData(form);
+      provisionMsg.textContent = '';
+      provisionMsg.className = 'msg';
+      const fd = new FormData(provisionForm);
+      const body = {
+        pin: fd.get('pin') || '',
+        claimInput: fd.get('claimInput'),
+        identityUrl: fd.get('identityUrl') || '',
+        ...relayPayload(fd),
+      };
+      const btn = provisionForm.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/setup/provision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          provisionMsg.textContent = data.error || 'Falha ao provisionar.';
+          provisionMsg.className = 'msg err';
+          return;
+        }
+        provisionMsg.textContent = data.message || 'Provisionado.';
+        provisionMsg.className = 'msg ok';
+      } catch (err) {
+        provisionMsg.textContent = String(err);
+        provisionMsg.className = 'msg err';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    const setupForm = document.getElementById('setup-form');
+    const manualMsg = document.getElementById('manual-msg');
+    setupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      manualMsg.textContent = '';
+      manualMsg.className = 'msg';
+      const fd = new FormData(setupForm);
       const body = {
         pin: fd.get('pin') || '',
         identityUrl: fd.get('identityUrl'),
         deviceKey: fd.get('deviceKey'),
         accessPointSlug: fd.get('accessPointSlug') || '',
         emitDetection: fd.get('emitDetection') === 'on',
-        relayEnabled: fd.get('relayEnabled') === 'on',
-        relayGpioPin: Number(fd.get('relayGpioPin') || 17),
-        relayPulseMs: Number(fd.get('relayPulseMs') || 3000),
+        ...relayPayload(fd),
       };
-      form.querySelector('button').disabled = true;
+      const btn = setupForm.querySelector('button[type="submit"]');
+      btn.disabled = true;
       try {
         const res = await fetch('/api/setup', {
           method: 'POST',
@@ -87,17 +196,17 @@
         });
         const data = await res.json();
         if (!res.ok || !data.ok) {
-          msg.textContent = data.error || 'Falha ao salvar.';
-          msg.className = 'msg err';
+          manualMsg.textContent = data.error || 'Falha ao salvar.';
+          manualMsg.className = 'msg err';
           return;
         }
-        msg.textContent = data.message || 'Salvo.';
-        msg.className = 'msg ok';
+        manualMsg.textContent = data.message || 'Salvo.';
+        manualMsg.className = 'msg ok';
       } catch (err) {
-        msg.textContent = String(err);
-        msg.className = 'msg err';
+        manualMsg.textContent = String(err);
+        manualMsg.className = 'msg err';
       } finally {
-        form.querySelector('button').disabled = false;
+        btn.disabled = false;
       }
     });
   </script>

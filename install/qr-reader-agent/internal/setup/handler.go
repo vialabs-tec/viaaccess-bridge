@@ -28,6 +28,7 @@ type Handler struct {
 	PIN        string
 	Save       func(cfg appconfig.RuntimeConfig) error
 	Ping       func(ctx context.Context, identityURL string) error
+	HTTPClient *http.Client
 }
 
 func (h *Handler) authorize(pin string) bool {
@@ -104,7 +105,96 @@ func (h *Handler) HandleSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "Configuração salva. Reinicie o serviço."})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "Configuração salva. Leitor ativo."})
+}
+
+func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "Corpo inválido."})
+		return
+	}
+	var req ProvisionRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "JSON inválido."})
+		return
+	}
+	if !h.authorize(req.PIN) {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"ok": false, "error": "PIN inválido."})
+		return
+	}
+
+	identityURL, claimToken, err := ParseProvisionInput(req.ClaimInput, req.IdentityURL)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	defer cancel()
+	claimed, err := ClaimProvision(ctx, identityURL, claimToken, h.HTTPClient)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+
+	cfg := appconfig.DefaultRuntimeConfig()
+	cfg.Configured = true
+	cfg.IdentityURL = strings.TrimRight(strings.TrimSpace(claimed.IdentityURL), "/")
+	if cfg.IdentityURL == "" {
+		cfg.IdentityURL = identityURL
+	}
+	cfg.DeviceKey = strings.TrimSpace(claimed.DeviceKey)
+	cfg.DeviceID = strings.TrimSpace(claimed.DeviceID)
+	cfg.ProvisionedAt = time.Now().UTC().Format(time.RFC3339)
+	cfg.AccessPointSlug = strings.TrimSpace(claimed.AccessPointSlug)
+	cfg.EmitDetection = claimed.Defaults.EmitDetection
+	cfg.DebounceMs = claimed.Defaults.DebounceMs
+	cfg.UnlockOnAuthorizedOnly = claimed.Defaults.UnlockOnAuthorizedOnly
+	cfg.Contingency.Enabled = claimed.Defaults.Contingency.Enabled
+	cfg.Contingency.OnlineRedeemTimeoutMs = claimed.Defaults.Contingency.OnlineRedeemTimeoutMs
+	cfg.Contingency.MaxPolicyStaleHours = claimed.Defaults.Contingency.MaxPolicyStaleHours
+	if req.RelayEnabled != nil {
+		cfg.Relay.Enabled = *req.RelayEnabled
+	}
+	if req.RelayGPIOPin != nil && *req.RelayGPIOPin > 0 {
+		cfg.Relay.GPIOPin = *req.RelayGPIOPin
+	}
+	if req.RelayPulseMs != nil && *req.RelayPulseMs > 0 {
+		cfg.Relay.PulseMs = *req.RelayPulseMs
+	}
+	cfg.SetupPIN = strings.TrimSpace(h.PIN)
+	cfg = cfg.Normalize()
+
+	if err := cfg.ValidateOperational(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	if h.Ping != nil {
+		pingCtx, pingCancel := context.WithTimeout(r.Context(), 8*time.Second)
+		defer pingCancel()
+		if err := h.Ping(pingCtx, cfg.IdentityURL); err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{
+				"ok":    false,
+				"error": fmt.Sprintf("Identity inacessível: %v", err),
+			})
+			return
+		}
+	}
+	if err := h.Save(cfg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":              true,
+		"message":         "Provisionamento concluído. Leitor ativo.",
+		"accessPointSlug": cfg.AccessPointSlug,
+		"deviceId":        cfg.DeviceID,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, body map[string]any) {

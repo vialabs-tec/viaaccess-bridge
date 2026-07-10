@@ -118,3 +118,11 @@ func FormatLog(result Result) string {
 func IsAuthorized(result Result) bool {
 	return result.OK && result.Data.CorrelationOutcome == "AUTHORIZED"
 }
+
+// IsBridgeAuthFailure reports revoked or disabled device keys from redeem responses.
+func IsBridgeAuthFailure(result Result) bool {
+	if result.Status == 401 {
+		return true
+	}
+	return result.Status == 403 && result.Data.Code == "BRIDGE_DISABLED"
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,9 @@ import (
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 )
+
+// ErrBridgeUnauthorized means the device key was revoked or disabled on Identity.
+var ErrBridgeUnauthorized = errors.New("bridge device key unauthorized")
 
 type ClientConfig struct {
 	IdentityURL   string
@@ -56,6 +60,9 @@ func (c *Client) FetchPolicy(ctx context.Context) (policy.Snapshot, error) {
 
 	raw, _ := io.ReadAll(res.Body)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		if IsBridgeAuthFailure(res.StatusCode, raw) {
+			return policy.Snapshot{}, fmt.Errorf("%w: HTTP %d", ErrBridgeUnauthorized, res.StatusCode)
+		}
 		return policy.Snapshot{}, fmt.Errorf("policy sync HTTP %d: %s", res.StatusCode, strings.TrimSpace(string(raw)))
 	}
 
@@ -67,9 +74,9 @@ func (c *Client) FetchPolicy(ctx context.Context) (policy.Snapshot, error) {
 }
 
 type FlushResponse struct {
-	OK      bool `json:"ok"`
-	Flushed int  `json:"flushed"`
-	Skipped int  `json:"skipped"`
+	OK      bool   `json:"ok"`
+	Flushed int    `json:"flushed"`
+	Skipped int    `json:"skipped"`
 	Error   string `json:"error"`
 	Code    string `json:"code"`
 }
@@ -120,6 +127,9 @@ func (c *Client) FlushOutbox(ctx context.Context, events []outbox.Event) (FlushR
 	_ = json.Unmarshal(raw, &data)
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		if IsBridgeAuthFailure(res.StatusCode, raw) {
+			return data, fmt.Errorf("%w: HTTP %d", ErrBridgeUnauthorized, res.StatusCode)
+		}
 		if data.Error == "" {
 			data.Error = strings.TrimSpace(string(raw))
 		}
