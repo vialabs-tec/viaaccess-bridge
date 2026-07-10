@@ -1,0 +1,16 @@
+[Unit]
+Description=ViaAccess QR Reader appliance agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=viaaccess
+Group=viaaccess
+EnvironmentFile=-/etc/viaaccess-qr-reader/env
+ExecStart=/usr/local/bin/viaaccess-qr-agent --config /etc/viaaccess-qr-reader/config.json --stdin
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

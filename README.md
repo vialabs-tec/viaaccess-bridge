@@ -12,7 +12,10 @@ O bridge **não** faz reconhecimento facial nem cadastro de usuários. Ele tradu
 
 Pacote pronto com Frigate + MQTT + bridge: **[install/frigate/](install/frigate/README.md)**.
 
-Leitor USB ou HTTP (catraca) + QR dinâmico Identity (Phase 1b): **[install/identity-qr-reader/](install/identity-qr-reader/README.md)** — **somente referência** (`npm start` ou `npm run start:http`); integradores adaptam para o hardware real.
+Leitor USB ou HTTP (catraca) + QR dinâmico Identity (Phase 1b):
+
+- **Produção (appliance):** **[install/qr-reader-agent/](install/qr-reader-agent/README.md)** — agent Go (`viaaccess-qr-agent`), setup UI, GPIO, systemd
+- **Referência / homologação:** **[install/identity-qr-reader/](install/identity-qr-reader/README.md)** — script TypeScript (`npm start` ou `npm run start:http`)
 
 Imagem Docker:
 

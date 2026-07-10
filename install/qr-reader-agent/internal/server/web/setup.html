@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ViaAccess QR Reader — Setup</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 1.5rem; background: #0b0f14; color: #e8edf2; }
+    main { max-width: 32rem; margin: 0 auto; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    p { color: #9aa7b5; font-size: 0.9rem; }
+    label { display: block; margin-top: 1rem; font-size: 0.85rem; }
+    input, select { width: 100%; margin-top: 0.35rem; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: inherit; box-sizing: border-box; }
+    button { margin-top: 1.25rem; width: 100%; padding: 0.7rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .msg { margin-top: 1rem; font-size: 0.9rem; }
+    .err { color: #f87171; }
+    .ok { color: #4ade80; }
+    fieldset { border: 1px solid #2a3441; border-radius: 8px; margin-top: 1rem; padding: 0.75rem 1rem; }
+    legend { padding: 0 0.35rem; font-size: 0.85rem; color: #9aa7b5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ViaAccess QR Reader</h1>
+    <p>Provisionamento do appliance. Crie a device key <code>idb_…</code> no admin do Identity (ponto em QR dinâmico no leitor).</p>
+
+    <form id="setup-form">
+      <label>PIN de fábrica (se configurado)
+        <input name="pin" type="password" autocomplete="off" />
+      </label>
+      <label>URL do Identity
+        <input name="identityUrl" required placeholder="https://identity.cliente.com" />
+      </label>
+      <label>Device key (idb_…)
+        <input name="deviceKey" required placeholder="idb_…" autocomplete="off" />
+      </label>
+      <label>Slug do ponto (opcional)
+        <input name="accessPointSlug" placeholder="entrada-principal" />
+      </label>
+      <fieldset>
+        <legend>Relé</legend>
+        <label>
+          <input name="relayEnabled" type="checkbox" checked />
+          Acionar relé GPIO após autorização
+        </label>
+        <label>GPIO pin
+          <input name="relayGpioPin" type="number" value="17" min="1" />
+        </label>
+        <label>Pulso (ms)
+          <input name="relayPulseMs" type="number" value="3000" min="100" />
+        </label>
+      </fieldset>
+      <label>
+        <input name="emitDetection" type="checkbox" checked />
+        Emitir detection no ViaAccess (recomendado sem câmera na porta)
+      </label>
+      <button type="submit">Salvar e testar conexão</button>
+      <div id="msg" class="msg"></div>
+    </form>
+  </main>
+  <script>
+    const form = document.getElementById('setup-form');
+    const msg = document.getElementById('msg');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = '';
+      msg.className = 'msg';
+      const fd = new FormData(form);
+      const body = {
+        pin: fd.get('pin') || '',
+        identityUrl: fd.get('identityUrl'),
+        deviceKey: fd.get('deviceKey'),
+        accessPointSlug: fd.get('accessPointSlug') || '',
+        emitDetection: fd.get('emitDetection') === 'on',
+        relayEnabled: fd.get('relayEnabled') === 'on',
+        relayGpioPin: Number(fd.get('relayGpioPin') || 17),
+        relayPulseMs: Number(fd.get('relayPulseMs') || 3000),
+      };
+      form.querySelector('button').disabled = true;
+      try {
+        const res = await fetch('/api/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          msg.textContent = data.error || 'Falha ao salvar.';
+          msg.className = 'msg err';
+          return;
+        }
+        msg.textContent = data.message || 'Salvo.';
+        msg.className = 'msg ok';
+      } catch (err) {
+        msg.textContent = String(err);
+        msg.className = 'msg err';
+      } finally {
+        form.querySelector('button').disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

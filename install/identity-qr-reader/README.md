@@ -1,6 +1,6 @@
 # Leitor USB → ViaAccess Identity (QR dinâmico)
 
-**Implementação de referência (Phase 1b), não produto acoplado.** Serve para homologar o contrato `POST /api/bridge/intent/redeem` e copiar o fluxo em produção. Integradores com catraca, SDK de fabricante ou firmware próprio devem adaptar ou reimplementar; a ViaLabs não garante compatibilidade com todo hardware via este script.
+**Referência de contrato (homologação).** Para o appliance de produção (Go, setup UI, GPIO, systemd), use **[../qr-reader-agent](../qr-reader-agent/README.md)**.
 
 Dois modos no mesmo pacote:
 
