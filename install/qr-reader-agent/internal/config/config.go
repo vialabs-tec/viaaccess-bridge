@@ -29,7 +29,15 @@ type RuntimeConfig struct {
 
 	Relay RelayConfig `json:"relay"`
 
+	Contingency ContingencyConfig `json:"contingency"`
+
 	SetupPIN string `json:"setupPin,omitempty"`
+}
+
+type ContingencyConfig struct {
+	Enabled              bool `json:"enabled"`
+	OnlineRedeemTimeoutMs int `json:"onlineRedeemTimeoutMs"`
+	MaxPolicyStaleHours  int  `json:"maxPolicyStaleHours"`
 }
 
 type RelayConfig struct {
@@ -53,6 +61,11 @@ func DefaultRuntimeConfig() RuntimeConfig {
 			GPIOPin:    17,
 			PulseMs:    3000,
 			ActiveHigh: true,
+		},
+		Contingency: ContingencyConfig{
+			Enabled:               true,
+			OnlineRedeemTimeoutMs: 3000,
+			MaxPolicyStaleHours:   168,
 		},
 	}
 }
@@ -92,6 +105,12 @@ func (c RuntimeConfig) Normalize() RuntimeConfig {
 	}
 	if c.Relay.GPIOPin <= 0 {
 		c.Relay.GPIOPin = 17
+	}
+	if c.Contingency.OnlineRedeemTimeoutMs <= 0 {
+		c.Contingency.OnlineRedeemTimeoutMs = 3000
+	}
+	if c.Contingency.MaxPolicyStaleHours <= 0 {
+		c.Contingency.MaxPolicyStaleHours = 168
 	}
 	return c
 }
@@ -173,6 +192,21 @@ func ApplyEnv(cfg RuntimeConfig, env map[string]string) RuntimeConfig {
 	}
 	if v := strings.TrimSpace(get("SETUP_PIN")); v != "" {
 		cfg.SetupPIN = v
+	}
+	if v := strings.TrimSpace(get("CONTINGENCY_ENABLED")); v == "false" {
+		cfg.Contingency.Enabled = false
+	}
+	if v := strings.TrimSpace(get("ONLINE_REDEEM_TIMEOUT_MS")); v != "" {
+		var ms int
+		if _, err := fmt.Sscanf(v, "%d", &ms); err == nil && ms > 0 {
+			cfg.Contingency.OnlineRedeemTimeoutMs = ms
+		}
+	}
+	if v := strings.TrimSpace(get("MAX_POLICY_STALE_HOURS")); v != "" {
+		var hours int
+		if _, err := fmt.Sscanf(v, "%d", &hours); err == nil && hours > 0 {
+			cfg.Contingency.MaxPolicyStaleHours = hours
+		}
 	}
 	return cfg.Normalize()
 }

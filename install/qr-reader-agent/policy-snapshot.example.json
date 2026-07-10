@@ -1,0 +1,8 @@
+{
+  "syncedAt": "2026-07-10T12:00:00Z",
+  "grantVersion": "v1",
+  "accessPointSlug": "entrada-principal",
+  "trustKeyId": "org-example",
+  "memberGrantCount": 1,
+  "maxStaleHours": 168
+}

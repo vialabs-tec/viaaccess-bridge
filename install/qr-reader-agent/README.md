@@ -53,7 +53,7 @@ Variáveis em `/etc/viaaccess-qr-reader/env` (opcional, sobrescrevem JSON):
 
 | Método | Path | Uso |
 |--------|------|-----|
-| `GET` | `/health` | Status (rede, Identity, último scan) |
+| `GET` | `/health` | Modo operação, sync, outbox, último scan — ver [docs/contingency-mode.md](docs/contingency-mode.md) |
 | `POST` | `/scan` | Body JSON `{ "qrUrl": "…" }` |
 | `GET` | `/setup` | UI de provisionamento (só sem config) |
 
@@ -78,6 +78,23 @@ curl -s -X POST http://127.0.0.1:3710/scan \
 Com `relay.enabled: true` no config, o agent pulsa a linha em `gpiochip0` no offset configurado (`relayGpioPin`). Em Raspberry Pi, confira o offset com `gpioinfo` (BCM 17 nem sempre é offset 17).
 
 Em desenvolvimento (macOS) ou sem GPIO, usa driver simulado (log).
+
+## Modo contingência (porta sem WAN)
+
+Celular com 4G continua emitindo QR no Identity. O appliance:
+
+1. Tenta **redeem online** (timeout 3s).
+2. Se a rede falhar e o **policy snapshot** estiver fresh → modo `CONTINGENCY`.
+3. Se o snapshot estiver expirado → `SYNC_STALE` (passagem bloqueada).
+
+Arquivos em `/etc/viaaccess-qr-reader/`:
+
+- `policy-snapshot.json` — último sync de grants (ver `policy-snapshot.example.json`)
+- `outbox.json` — eventos pendentes para ViaAccess
+
+Documentação completa: [docs/contingency-mode.md](docs/contingency-mode.md).
+
+**Fase atual:** estados + `/health` + online-first implementados; verificação de ticket assinado (Identity) na fase 2.
 
 ## systemd
 

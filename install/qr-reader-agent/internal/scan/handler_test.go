@@ -2,9 +2,12 @@ package scan
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/agent"
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/redeem"
 )
 
@@ -57,9 +60,10 @@ func TestHandleScanUnlockWhenAuthorized(t *testing.T) {
 			UnlockWebhookURL:       "http://turnstile.local/unlock",
 			UnlockOnAuthorizedOnly: true,
 		},
-		Redeem:   redeemClient,
-		Unlock:   unlock,
-		Debounce: &Debounce{},
+		Redeem:        redeemClient,
+		Unlock:        unlock,
+		Debounce:      &Debounce{},
+		OperationMode: func() agent.OperationMode { return agent.ModeOnline },
 	}
 	status, body := h.HandleScan(context.Background(), map[string]any{
 		"qrUrl": "http://localhost:3100/r/i1?t=tok",
@@ -69,6 +73,9 @@ func TestHandleScanUnlockWhenAuthorized(t *testing.T) {
 	}
 	if unlock.calls != 1 {
 		t.Fatalf("expected unlock call, got %d", unlock.calls)
+	}
+	if body["scanPath"] != agent.ScanPathOnline {
+		t.Fatalf("expected ONLINE path, got %v", body["scanPath"])
 	}
 }
 
@@ -87,9 +94,10 @@ func TestHandleScanSkipsUnlockWhenUnauthorized(t *testing.T) {
 			UnlockWebhookURL:       "http://turnstile.local/unlock",
 			UnlockOnAuthorizedOnly: true,
 		},
-		Redeem:   redeemClient,
-		Unlock:   unlock,
-		Debounce: &Debounce{},
+		Redeem:        redeemClient,
+		Unlock:        unlock,
+		Debounce:      &Debounce{},
+		OperationMode: func() agent.OperationMode { return agent.ModeOnline },
 	}
 	status, body := h.HandleScan(context.Background(), map[string]any{
 		"qr": "http://localhost:3100/r/i1?t=tok",
@@ -113,5 +121,29 @@ func TestHandleScanRejectsWebhookSecret(t *testing.T) {
 	status, _ := h.HandleScan(context.Background(), map[string]any{"qrUrl": "http://x"}, "wrong")
 	if status != 401 {
 		t.Fatalf("expected 401, got %d", status)
+	}
+}
+
+func TestHandleScanBlockedWhenOfflineAndStale(t *testing.T) {
+	redeemClient := &fakeRedeemClient{
+		result: redeem.Result{OK: false, Status: 0, Data: redeem.Response{Error: "timeout"}},
+	}
+	h := &Handler{
+		Config: appconfig.RuntimeConfig{
+			Contingency: appconfig.ContingencyConfig{Enabled: true, OnlineRedeemTimeoutMs: 100},
+		},
+		Redeem:        redeemClient,
+		Debounce:      &Debounce{},
+		OperationMode: func() agent.OperationMode { return agent.ModeSyncStale },
+		Policy:        func() policy.Snapshot { return policy.Snapshot{} },
+	}
+	status, body := h.HandleScan(context.Background(), map[string]any{
+		"qrUrl": "http://localhost:3100/r/i1?t=tok",
+	}, "")
+	if status != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", status)
+	}
+	if body["scanPath"] != agent.ScanPathBlocked {
+		t.Fatalf("expected BLOCKED, got %v", body["scanPath"])
 	}
 }

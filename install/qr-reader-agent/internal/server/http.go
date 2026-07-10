@@ -7,7 +7,10 @@ import (
 	"io/fs"
 	"net/http"
 
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/agent"
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/redeem"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/relay"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/scan"
@@ -21,13 +24,16 @@ var setupFS embed.FS
 type HealthSnapshot func() map[string]any
 
 type Options struct {
-	Config        appconfig.RuntimeConfig
-	ConfigPath    string
-	SetupPIN      string
-	State         HealthSnapshot
-	OnScanComplete func(qrURL string, result redeem.Result)
-	OnConfigSaved func(cfg appconfig.RuntimeConfig) error
-	RelayService  *relay.Service
+	Config         appconfig.RuntimeConfig
+	ConfigPath     string
+	SetupPIN       string
+	State          HealthSnapshot
+	Policy         func() policy.Snapshot
+	OperationMode  func() agent.OperationMode
+	Outbox         *outbox.Store
+	OnScanComplete func(path agent.ScanPath, qrURL string, result redeem.Result)
+	OnConfigSaved  func(cfg appconfig.RuntimeConfig) error
+	RelayService   *relay.Service
 }
 
 func NewMux(opts Options) http.Handler {
@@ -76,11 +82,14 @@ func NewMux(opts Options) http.Handler {
 	}
 
 	handler := &scan.Handler{
-		Config:   opts.Config,
-		Redeem:   redeemClient,
-		Unlock:   unlockClient,
-		Relay:    relayPulser,
-		Debounce: debounce,
+		Config:        opts.Config,
+		Redeem:        redeemClient,
+		Unlock:        unlockClient,
+		Relay:         relayPulser,
+		Debounce:      debounce,
+		Policy:        opts.Policy,
+		OperationMode: opts.OperationMode,
+		Outbox:        opts.Outbox,
 		OnScanComplete: opts.OnScanComplete,
 	}
 
