@@ -1,0 +1,32 @@
+name: QR reader agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "install/qr-reader-agent/**"
+      - ".github/workflows/qr-reader-agent.yml"
+  pull_request:
+    paths:
+      - "install/qr-reader-agent/**"
+      - ".github/workflows/qr-reader-agent.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: install/qr-reader-agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: install/qr-reader-agent/go.sum
+
+      - name: go test
+        run: go test ./...
+
+      - name: go build
+        run: go build -o /dev/null ./cmd/viaaccess-qr-agent

@@ -16,8 +16,12 @@ Requisitos: Go 1.22+
 cd install/qr-reader-agent
 make build          # bin/viaaccess-qr-agent (host)
 make arm64          # bin/viaaccess-qr-agent-linux-arm64 (Pi)
-make test
+make test           # testes unitários (também rodam no CI do GitHub)
+make dev            # desenvolvimento no Mac (ver abaixo)
+make homologate     # checklist de health/scan (ver abaixo)
 ```
+
+CI: workflow `.github/workflows/qr-reader-agent.yml` executa `go test` e `go build` em push/PR que alteram esta pasta.
 
 ## Primeiro boot (provisionamento)
 
@@ -91,7 +95,7 @@ Se o QR expirou ou não puder ser escaneado:
 
 Se o admin **revogar** a device key `idb_…` no Identity:
 
-1. Em até ~60s (sync de policy) ou no próximo `POST /scan`, o agent detecta `401` / `BRIDGE_DISABLED`.
+1. Em até ~60s (sync de policy ou device-config) ou no próximo `POST /scan`, o agent detecta `401` / `BRIDGE_DISABLED`.
 2. Ele **limpa a chave local**, grava `configured: false` e reabre **`/setup`** sem reiniciar o processo.
 3. No admin, gere um **novo** QR (**Provisionar (QR)**). Tokens `clm_…` antigos não podem ser reutilizados.
 4. No appliance, abra `http://<ip>:3710/setup` → cole o novo `clm_…` → provisionar.
@@ -113,34 +117,92 @@ Log esperado: `device key invalid (…) — setup mode at http://…:3710/setup`
 | `POST` | `/api/setup/provision` | Consome `clm_…` via Identity e grava config |
 | `POST` | `/api/setup` | Salva config manual (`idb_…`) |
 
-## Desenvolvimento no Mac
+## Operação contínua (sync com Identity)
 
-No macOS use arquivos locais em `.dev/` em vez de `/etc/viaaccess-qr-reader/`:
+Depois de provisionado, o agent mantém contato periódico com o Identity. **Não é necessário reiniciar** o serviço quando defaults mudam na nuvem ou quando a chave é revogada (neste caso ele volta ao `/setup` sozinho).
+
+A cada **~60 segundos** (e uma vez ao entrar em modo ONLINE), o loop de sync executa:
+
+| Etapa | Endpoint Identity | Efeito no appliance |
+|-------|-------------------|---------------------|
+| 1. Policy | `GET /api/bridge/policy-snapshot` | Atualiza quem pode passar em modo offline (`policy-snapshot.json`) |
+| 2. Device config | `GET /api/bridge/device-config` | Ajusta parâmetros operacionais em `config.json` (ver abaixo) |
+| 3. Outbox | `POST /api/bridge/contingency/flush` | Reenvia passagens gravadas offline, se houver |
+
+```
+  provisionado (idb_…)                    Identity
+        │                                    │
+        ├──── policy sync ──────────────────►│ grants + ticketVerify
+        ├──── device-config (ETag) ─────────►│ debounce, contingência…
+        ├──── redeem (/scan) ───────────────►│ validation + detection
+        └──── outbox flush ─────────────────►│ após modo offline
+```
+
+### Config remota (`device-config`)
+
+O Identity define os **defaults operacionais** do leitor. O agent autentica com `idb_…` e usa `If-None-Match` (ETag) para evitar transferir o mesmo JSON repetidamente (`304 Not Modified`).
+
+**Campos que o agent aplica** quando mudam no Identity:
+
+| Campo | Efeito prático |
+|-------|----------------|
+| `debounceMs` | Tempo mínimo entre dois scans do mesmo QR |
+| `emitDetection` | Registrar detection no ViaAccess após validation |
+| `contingency.enabled` | Permitir passagem offline com snapshot local |
+| `contingency.onlineRedeemTimeoutMs` | Quanto esperar a rede antes de tentar offline |
+| `contingency.maxPolicyStaleHours` | Idade máxima do snapshot antes de bloquear |
+| `unlockOnAuthorizedOnly` | Só acionar relé/webhook em `AUTHORIZED` |
+| `accessPointSlug` | Ponto vinculado à device key |
+
+**Permanecem só no appliance** (configurados no `/setup` ou JSON local): relé GPIO, `unlockWebhookUrl`, `httpPort`, PIN de fábrica.
+
+Quando o Identity envia config nova:
+
+1. Grava em `config.json` (ou `config.dev.json` em dev).
+2. Recarrega handlers HTTP **sem reiniciar** o processo.
+3. Log: `device config applied: debounceMs=… emitDetection=… contingency=…`
+
+### Chave inválida → modo setup automático
+
+Respostas `401` ou `403` com `BRIDGE_DISABLED` em policy sync, device-config, redeem (`/scan`) ou outbox flush disparam:
+
+1. Limpeza de `deviceKey` e `configured: false` no JSON local.
+2. Rotas voltam para `/setup` (UI de provisionamento).
+3. Log: `device key invalid (…) — setup mode at http://…:3710/setup`.
+
+Provisionar de novo com um **novo** token `clm_…` (ver [Reprovisionar após revogar a chave](#reprovisionar-após-revogar-a-chave)).
+
+## Desenvolvimento no Mac
 
 ```bash
 cd install/qr-reader-agent
-mkdir -p .dev
+make dev      # sobe com config.dev.json + estado em .dev/
+make test     # testes unitários
+make homologate  # health (+ scan opcional com QR_URL=…)
 ```
 
-**Primeiro boot (testar provisionamento QR):**
+No macOS use arquivos locais em `.dev/` em vez de `/etc/viaaccess-qr-reader/`.
+
+**Primeiro boot (testar provisionamento QR):** apague ou não crie `config.dev.json`, rode `make dev`, abra `http://127.0.0.1:3710/setup` e provisione com um `clm_…` do admin (`http://localhost:3100`).
+
+**Já configurado** — crie `config.dev.json` (gitignored) e use `make dev` ou `make run` (com `--stdin`).
+
+Homologação rápida com leitor já ativo (`scripts/homologate.sh`):
+
+| Variável | Obrigatório | Função |
+|----------|-------------|--------|
+| `AGENT_URL` | não (padrão `http://127.0.0.1:3710`) | Base do agent |
+| `IDENTITY_URL` | não (padrão `http://localhost:3100`) | Base do Identity |
+| `DEVICE_KEY` | não | Testa `GET /api/bridge/device-config` |
+| `QR_URL` | não | Simula `POST /scan` com QR dinâmico do PWA |
 
 ```bash
-go run ./cmd/viaaccess-qr-agent \
-  --config ./.dev/config.json \
-  --policy ./.dev/policy-snapshot.json \
-  --outbox ./.dev/outbox.json \
-  --nonce ./.dev/consumed-intents.json
+export DEVICE_KEY=idb_…
+export QR_URL='https://…'
+make homologate
 ```
 
-Abra `http://127.0.0.1:3710/setup`, provisione com um `clm_…` do admin local (`http://localhost:3100`). O modo operação ativa sozinho após salvar.
-
-**Já configurado** — crie `config.dev.json` (gitignored) e use:
-
-```bash
-make run
-```
-
-Equivalente a `go run ./cmd/viaaccess-qr-agent --config ./config.dev.json --stdin`.
+Saída esperada com tudo ok: `configured: true`, `operationMode: ONLINE`, e scan com `correlationOutcome: AUTHORIZED`.
 
 Exemplo de `config.dev.json`:
 
@@ -175,6 +237,8 @@ Variáveis em `/etc/viaaccess-qr-reader/env` (opcional, sobrescrevem JSON):
 | `RELAY_ENABLED` | `true` para GPIO |
 | `RELAY_GPIO_PIN` | Padrão `17` |
 | `STDIN_SCANNER` | `true` com `--stdin` no systemd para leitor USB |
+
+Config remota e ciclo de sync: ver [Operação contínua](#operação-contínua-sync-com-identity).
 
 ### Endpoints locais
 
@@ -245,9 +309,11 @@ sudo systemctl enable --now viaaccess-qr-agent
 | USB stdin | `scan-redeem.ts` | `--stdin` |
 | Contingency verify | — | `internal/contingency` |
 | Policy sync + flush | — | `internal/syncclient` |
+| Device config sync | — | `internal/syncclient` (`GET /api/bridge/device-config`) |
 | Provisionamento QR | — | `internal/setup` (`POST /api/setup/provision`) |
+| Revogação → setup | — | `internal/server/app.go` (hot reload) |
 
 ## Ver também
 
-- Identity: `POST /api/bridge/provision/claim`, `POST /api/bridge/intent/redeem` — OpenAPI em viaaccess-identity
+- Identity: `GET /api/bridge/device-config`, `POST /api/bridge/provision/claim`, `POST /api/bridge/intent/redeem` — OpenAPI em viaaccess-identity
 - [identity-qr-bridge.md](https://github.com/vialabs-tec/viaaccess-identity/blob/main/docs/installation/identity-qr-bridge.md)

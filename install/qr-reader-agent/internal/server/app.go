@@ -38,6 +38,7 @@ type App struct {
 	relayService  *relay.Service
 	syncCancel    context.CancelFunc
 	probeCancel   context.CancelFunc
+	deviceConfigETag string
 }
 
 type AppDeps struct {
@@ -117,6 +118,7 @@ func (a *App) enterSetupMode(reason string) {
 
 	a.stopBackgroundWorkersLocked()
 	a.cfg = appconfig.ResetToSetup(a.cfg)
+	a.deviceConfigETag = ""
 	if err := appconfig.SaveToFile(a.configPath, a.cfg); err != nil {
 		log.Printf("setup reset save failed: %v", err)
 		return
@@ -243,6 +245,8 @@ func (a *App) runSyncLoop(ctx context.Context) {
 			log.Printf("policy synced: grantVersion=%s members=%d", snap.GrantVersion, snap.MemberGrantCount)
 		}
 
+		a.syncDeviceConfigLocked(client, syncCtx)
+
 		pending := a.outbox.PendingEvents()
 		if len(pending) == 0 {
 			return
@@ -274,4 +278,45 @@ func (a *App) runSyncLoop(ctx context.Context) {
 			syncOnce()
 		}
 	}
+}
+
+func (a *App) syncDeviceConfigLocked(client *syncclient.Client, ctx context.Context) {
+	a.mu.Lock()
+	etag := a.deviceConfigETag
+	a.mu.Unlock()
+
+	result, err := client.FetchDeviceConfig(ctx, etag)
+	if err != nil {
+		if errors.Is(err, syncclient.ErrDeviceConfigNotModified) {
+			return
+		}
+		if errors.Is(err, syncclient.ErrBridgeUnauthorized) {
+			a.onBridgeUnauthorized("device config rejected device key")
+			return
+		}
+		log.Printf("device config sync failed: %v", err)
+		return
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if result.ETag != "" {
+		a.deviceConfigETag = result.ETag
+	}
+
+	updated, changed := appconfig.ApplyRemoteDeviceConfig(a.cfg, result.Config)
+	if !changed {
+		return
+	}
+
+	a.cfg = updated
+	a.state.SetContingency(updated.Contingency)
+	if err := appconfig.SaveToFile(a.configPath, updated); err != nil {
+		log.Printf("device config save failed: %v", err)
+		return
+	}
+	a.rebuildHandlerLocked()
+	log.Printf("device config applied: debounceMs=%d emitDetection=%v contingency=%v",
+		updated.DebounceMs, updated.EmitDetection, updated.Contingency.Enabled)
 }
