@@ -15,6 +15,7 @@ import (
 
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/agent"
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/redeem"
@@ -22,6 +23,7 @@ import (
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/scan"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/server"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/setup"
+	syncclient "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/syncclient"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/unlock"
 )
 
@@ -29,12 +31,14 @@ const (
 	defaultConfigPath = "/etc/viaaccess-qr-reader/config.json"
 	defaultPolicyPath = "/etc/viaaccess-qr-reader/policy-snapshot.json"
 	defaultOutboxPath = "/etc/viaaccess-qr-reader/outbox.json"
+	defaultNoncePath  = "/etc/viaaccess-qr-reader/consumed-intents.json"
 )
 
 func main() {
 	configPath := flag.String("config", envOr("VIAACCESS_QR_CONFIG", defaultConfigPath), "path to runtime config JSON")
 	policyPath := flag.String("policy", envOr("VIAACCESS_QR_POLICY", defaultPolicyPath), "path to policy snapshot JSON")
 	outboxPath := flag.String("outbox", envOr("VIAACCESS_QR_OUTBOX", defaultOutboxPath), "path to outbox state JSON")
+	noncePath := flag.String("nonce", envOr("VIAACCESS_QR_NONCE", defaultNoncePath), "path to consumed intent nonce store")
 	stdinMode := flag.Bool("stdin", envBool("STDIN_SCANNER"), "read QR URLs from stdin (USB keyboard wedge)")
 	setupPIN := flag.String("setup-pin", os.Getenv("SETUP_PIN"), "PIN required for /setup (empty = open on LAN)")
 	flag.Parse()
@@ -50,16 +54,22 @@ func main() {
 		log.Fatalf("load policy: %v", err)
 	}
 	policySnap.MaxStaleHours = cfg.Contingency.MaxPolicyStaleHours
+	policyHolder := policy.NewHolder(policySnap)
 
 	outboxStore, err := outbox.Open(*outboxPath)
 	if err != nil {
 		log.Fatalf("open outbox: %v", err)
 	}
 
+	nonceStore, err := contingency.OpenNonceStore(*noncePath)
+	if err != nil {
+		log.Fatalf("open nonce store: %v", err)
+	}
+
 	state := agent.NewState()
 	state.SetConfigured(cfg.Configured)
 	state.SetContingency(cfg.Contingency)
-	state.SetPolicy(policySnap)
+	state.SetPolicy(policyHolder.Get())
 	state.SetOutbox(outboxStore)
 
 	relayService, err := relay.NewService(cfg.Relay)
@@ -80,9 +90,10 @@ func main() {
 		ConfigPath:    *configPath,
 		SetupPIN:      *setupPIN,
 		State:         state.Snapshot,
-		Policy:        func() policy.Snapshot { return policySnap },
+		Policy:        policyHolder.Get,
 		OperationMode: state.OperationMode,
 		Outbox:        outboxStore,
+		Nonce:         nonceStore,
 		OnScanComplete: func(path agent.ScanPath, qrURL string, result redeem.Result) {
 			state.RecordScan(path, result)
 			log.Printf("[%s] %s", path, redeem.FormatLog(result))
@@ -112,9 +123,10 @@ func main() {
 			log.Printf("warning: %v", err)
 		} else {
 			go probeIdentity(ctx, cfg.IdentityURL, state)
+			go runSyncLoop(ctx, cfg, policyHolder, *policyPath, outboxStore, state)
 		}
 		if *stdinMode {
-			go runStdinScanner(ctx, cfg, policySnap, outboxStore, relayService, state)
+			go runStdinScanner(ctx, cfg, policyHolder, outboxStore, nonceStore, relayService, state)
 		}
 		log.Printf(
 			"viaaccess-qr-agent listening on http://%s (mode=%s stdin=%v)",
@@ -135,8 +147,9 @@ func main() {
 func runStdinScanner(
 	ctx context.Context,
 	cfg appconfig.RuntimeConfig,
-	policySnap policy.Snapshot,
+	policyHolder *policy.Holder,
 	outboxStore *outbox.Store,
+	nonceStore *contingency.NonceStore,
 	relayService *relay.Service,
 	state *agent.State,
 ) {
@@ -156,9 +169,10 @@ func runStdinScanner(
 		Unlock:        unlockClient,
 		Relay:         relayService,
 		Debounce:      debounce,
-		Policy:        func() policy.Snapshot { return policySnap },
+		Policy:        policyHolder.Get,
 		OperationMode: state.OperationMode,
 		Outbox:        outboxStore,
+		Nonce:         nonceStore,
 		OnScanComplete: func(path agent.ScanPath, qrURL string, result redeem.Result) {
 			state.RecordScan(path, result)
 			log.Printf("[%s] %s", path, redeem.FormatLog(result))
@@ -199,6 +213,70 @@ func probeIdentity(ctx context.Context, identityURL string, state *agent.State) 
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		}
+	}
+}
+
+func runSyncLoop(
+	ctx context.Context,
+	cfg appconfig.RuntimeConfig,
+	policyHolder *policy.Holder,
+	policyPath string,
+	outboxStore *outbox.Store,
+	state *agent.State,
+) {
+	client := syncclient.NewClient(syncclient.ClientConfig{
+		IdentityURL:   cfg.IdentityURL,
+		DeviceKey:     cfg.DeviceKey,
+		EmitDetection: cfg.EmitDetection,
+	}, nil)
+
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	syncOnce := func() {
+		syncCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+
+		snap, err := client.FetchPolicy(syncCtx)
+		if err != nil {
+			log.Printf("policy sync failed: %v", err)
+			return
+		}
+		snap.MaxStaleHours = cfg.Contingency.MaxPolicyStaleHours
+		if err := policy.SaveToFile(policyPath, snap); err != nil {
+			log.Printf("policy save failed: %v", err)
+		} else {
+			policyHolder.Set(snap)
+			state.SetPolicy(snap)
+			log.Printf("policy synced: grantVersion=%s members=%d", snap.GrantVersion, snap.MemberGrantCount)
+		}
+
+		pending := outboxStore.PendingEvents()
+		if len(pending) == 0 {
+			return
+		}
+
+		flushCtx, flushCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer flushCancel()
+		result, err := client.FlushOutbox(flushCtx, pending)
+		if err != nil {
+			log.Printf("outbox flush failed: %v", err)
+			return
+		}
+		if result.Flushed > 0 {
+			_ = outboxStore.MarkFlushed(time.Now().UTC())
+			log.Printf("outbox flushed: %d skipped=%d", result.Flushed, result.Skipped)
+		}
+	}
+
+	syncOnce()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			syncOnce()
 		}
 	}
 }

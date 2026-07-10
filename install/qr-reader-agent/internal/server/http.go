@@ -9,6 +9,7 @@ import (
 
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/agent"
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/redeem"
@@ -31,6 +32,7 @@ type Options struct {
 	Policy         func() policy.Snapshot
 	OperationMode  func() agent.OperationMode
 	Outbox         *outbox.Store
+	Nonce          *contingency.NonceStore
 	OnScanComplete func(path agent.ScanPath, qrURL string, result redeem.Result)
 	OnConfigSaved  func(cfg appconfig.RuntimeConfig) error
 	RelayService   *relay.Service
@@ -90,6 +92,7 @@ func NewMux(opts Options) http.Handler {
 		Policy:        opts.Policy,
 		OperationMode: opts.OperationMode,
 		Outbox:        opts.Outbox,
+		Nonce:         opts.Nonce,
 		OnScanComplete: opts.OnScanComplete,
 	}
 

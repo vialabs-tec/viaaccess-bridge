@@ -50,6 +50,7 @@ type Handler struct {
 	Policy          func() policy.Snapshot
 	OperationMode   func() agent.OperationMode
 	Outbox          *outbox.Store
+	Nonce           *contingency.NonceStore
 	Now             func() time.Time
 	OnScanComplete  func(path agent.ScanPath, qrURL string, result redeem.Result)
 }
@@ -149,6 +150,11 @@ func (h *Handler) redeemOnlineFirst(ctx context.Context, qrURL string) (agent.Sc
 }
 
 func (h *Handler) tryContingency(qrURL string, onlineHint string) (agent.ScanPath, redeem.Result) {
+	nowFn := h.Now
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+
 	mode := agent.ModeSyncStale
 	if h.OperationMode != nil {
 		mode = h.OperationMode()
@@ -176,6 +182,8 @@ func (h *Handler) tryContingency(qrURL string, onlineHint string) (agent.ScanPat
 		QRURL:           qrURL,
 		AccessPointSlug: h.Config.AccessPointSlug,
 		Policy:          policySnap,
+		Nonce:           h.Nonce,
+		Now:             nowFn(),
 	})
 	if !verify.OK {
 		return agent.ScanPathContingency, redeem.Result{
@@ -189,7 +197,13 @@ func (h *Handler) tryContingency(qrURL string, onlineHint string) (agent.ScanPat
 	}
 
 	if h.Outbox != nil {
-		_ = h.Outbox.Enqueue()
+		_ = h.Outbox.Enqueue(outbox.Event{
+			IntentID:        verify.IntentID,
+			MemberID:        verify.MemberID,
+			AccessPointSlug: h.Config.AccessPointSlug,
+			QRURL:           qrURL,
+			ScannedAt:       nowFn().UTC(),
+		})
 	}
 	return agent.ScanPathContingency, redeem.Result{
 		OK: true,

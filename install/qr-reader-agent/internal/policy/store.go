@@ -5,19 +5,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 )
 
 const DefaultMaxStaleHours = 168
 
-// Snapshot is the last grant policy pulled from Identity/ViaAccess (source of truth).
+// TicketVerify carries the HMAC key appliance needs for offline JWT verification.
+type TicketVerify struct {
+	Alg    string `json:"alg"`
+	KeyB64 string `json:"keyB64"`
+	Issuer string `json:"issuer"`
+}
+
+// Snapshot is the last grant policy pulled from Identity (source of truth).
 type Snapshot struct {
-	SyncedAt         time.Time `json:"syncedAt"`
-	GrantVersion     string    `json:"grantVersion,omitempty"`
-	AccessPointSlug  string    `json:"accessPointSlug,omitempty"`
-	TrustKeyID       string    `json:"trustKeyId,omitempty"`
-	MemberGrantCount int       `json:"memberGrantCount"`
-	MaxStaleHours    int       `json:"maxStaleHours,omitempty"`
+	SyncedAt         time.Time     `json:"syncedAt"`
+	GrantVersion     string        `json:"grantVersion,omitempty"`
+	AccessPointSlug  string        `json:"accessPointSlug,omitempty"`
+	TrustKeyID       string        `json:"trustKeyId,omitempty"`
+	MemberGrantCount int           `json:"memberGrantCount"`
+	MemberIDs        []string      `json:"memberIds,omitempty"`
+	MaxStaleHours    int           `json:"maxStaleHours,omitempty"`
+	TicketVerify     *TicketVerify `json:"ticketVerify,omitempty"`
 }
 
 func (s Snapshot) Normalize() Snapshot {
@@ -41,6 +51,17 @@ func (s Snapshot) StaleAgeHours(now time.Time) float64 {
 		return -1
 	}
 	return now.Sub(s.SyncedAt).Hours()
+}
+
+func (s Snapshot) HasMember(memberID string) bool {
+	return slices.Contains(s.MemberIDs, memberID)
+}
+
+func (s Snapshot) TicketVerifyReady() bool {
+	return s.TicketVerify != nil &&
+		s.TicketVerify.Alg == "HS256" &&
+		s.TicketVerify.KeyB64 != "" &&
+		s.TicketVerify.Issuer != ""
 }
 
 func LoadFromFile(path string) (Snapshot, error) {

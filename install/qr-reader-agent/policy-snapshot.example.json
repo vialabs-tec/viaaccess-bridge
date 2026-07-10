@@ -1,8 +1,14 @@
 {
   "syncedAt": "2026-07-10T12:00:00Z",
-  "grantVersion": "v1",
+  "grantVersion": "a1b2c3d4e5f6g7h8",
   "accessPointSlug": "entrada-principal",
   "trustKeyId": "org-example",
   "memberGrantCount": 1,
-  "maxStaleHours": 168
+  "memberIds": ["member_abc123"],
+  "maxStaleHours": 168,
+  "ticketVerify": {
+    "alg": "HS256",
+    "keyB64": "REPLACE_AFTER_POLICY_SYNC",
+    "issuer": "viaaccess-identity-passage"
+  }
 }

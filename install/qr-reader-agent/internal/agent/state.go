@@ -151,7 +151,7 @@ func (s *State) Snapshot() map[string]any {
 			"enabled":               s.contingency.Enabled,
 			"onlineRedeemTimeoutMs": s.contingency.OnlineRedeemTimeoutMs,
 			"maxPolicyStaleHours":   s.contingency.MaxPolicyStaleHours,
-			"ticketVerify":          "pending",
+			"ticketVerify":          ticketVerifyStatus(policySnap),
 		},
 		"policySync": map[string]any{
 			"syncedAt":          nilIfZero(policySnap.SyncedAt),
@@ -207,4 +207,11 @@ func roundHours(h float64) float64 {
 		return -1
 	}
 	return float64(int(h*10+0.5)) / 10
+}
+
+func ticketVerifyStatus(snap policy.Snapshot) string {
+	if snap.TicketVerifyReady() {
+		return "ready"
+	}
+	return "pending"
 }

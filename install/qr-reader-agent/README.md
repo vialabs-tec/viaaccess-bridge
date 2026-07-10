@@ -89,12 +89,13 @@ Celular com 4G continua emitindo QR no Identity. O appliance:
 
 Arquivos em `/etc/viaaccess-qr-reader/`:
 
-- `policy-snapshot.json` — último sync de grants (ver `policy-snapshot.example.json`)
-- `outbox.json` — eventos pendentes para ViaAccess
+- `policy-snapshot.json` — último sync de grants + chave `ticketVerify` (sync automático a cada 60s)
+- `outbox.json` — eventos pendentes para flush no Identity
+- `consumed-intents.json` — anti-replay local por `intentId`
 
 Documentação completa: [docs/contingency-mode.md](docs/contingency-mode.md).
 
-**Fase atual:** estados + `/health` + online-first implementados; verificação de ticket assinado (Identity) na fase 2.
+O QR dinâmico inclui `st` (JWT assinado pelo Identity). Em contingência, o agent valida `st` contra o snapshot local sem chamar a rede.
 
 ## systemd
 
@@ -114,7 +115,8 @@ sudo systemctl enable --now viaaccess-qr-agent
 | Debounce + `/scan` | `turnstile-http.ts` | `internal/scan` |
 | Unlock webhook | `unlock-webhook.ts` | `internal/unlock` |
 | USB stdin | `scan-redeem.ts` | `--stdin` |
-| Setup / health / GPIO | — | `internal/setup`, `internal/server`, `internal/relay` |
+| Contingency verify | — | `internal/contingency` |
+| Policy sync + flush | — | `internal/syncclient` |
 
 ## Ver também
 
