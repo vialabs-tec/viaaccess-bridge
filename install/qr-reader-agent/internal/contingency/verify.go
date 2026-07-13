@@ -108,6 +108,16 @@ func Verify(input VerifyInput) VerifyResult {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
+
+	if input.Policy.ResolvedAfterHours() != nil &&
+		policy.IsOutsideAllowedHours(now, *input.Policy.ResolvedAfterHours()) {
+		return VerifyResult{
+			OK:    false,
+			Code:  "AFTER_HOURS",
+			Error: "Passagem fora do horário permitido.",
+		}
+	}
+
 	if claims.ExpiresAt != nil && now.After(claims.ExpiresAt.Time) {
 		return VerifyResult{
 			OK:    false,

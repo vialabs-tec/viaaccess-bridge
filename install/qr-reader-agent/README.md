@@ -108,6 +108,35 @@ Log esperado: `device key invalid (…) — setup mode at http://…:3710/setup`
 {"ok": false, "configured": false, "setupRequired": true}
 ```
 
+### Reset manual (trocar de cliente ou reprovisionar)
+
+Se você tem o hardware mas não sabe a qual tenant pertence, ou quer instalá-lo em outro cliente **sem** depender da revogação no admin:
+
+```bash
+cd install/qr-reader-agent
+sudo ./scripts/reset-setup.sh
+```
+
+O script:
+
+1. Mostra `identityUrl`, `deviceId` e `accessPointSlug` atuais (para identificar o vínculo).
+2. Pede confirmação (use `--yes` para pular).
+3. Para o `viaaccess-qr-agent` (systemd), limpa credenciais em `config.json`, remove `IDENTITY_DEVICE_KEY` / `IDENTITY_URL` de `/etc/viaaccess-qr-reader/env` se existirem, e apaga snapshot/outbox locais do tenant anterior.
+4. Reinicia o serviço; o appliance fica em `http://<ip>:3710/setup`.
+
+Opções úteis:
+
+| Flag | Uso |
+|------|-----|
+| `--yes` | Sem prompt (automação) |
+| `--dev` | `config.dev.json` + `.dev/` (Mac, sem systemd) |
+| `--no-clear-state` | Mantém `policy-snapshot.json` e outbox |
+| `--no-restart` | Só altera arquivos; reinicie o serviço você mesmo |
+
+Desenvolvimento no Mac: `make reset-setup` (equivale a `./scripts/reset-setup.sh --dev --yes`).
+
+Depois do reset, gere um **novo** `clm_…` no admin do cliente destino e provisione em `/setup`.
+
 ### Endpoints de setup (modo não configurado)
 
 | Método | Path | Uso |
@@ -125,7 +154,7 @@ A cada **~60 segundos** (e uma vez ao entrar em modo ONLINE), o loop de sync exe
 
 | Etapa | Endpoint Identity | Efeito no appliance |
 |-------|-------------------|---------------------|
-| 1. Policy | `GET /api/bridge/policy-snapshot` | Atualiza quem pode passar em modo offline (`policy-snapshot.json`) |
+| 1. Policy | `GET /api/bridge/policy-snapshot` | Atualiza grants, `ticketVerify` e `edgePolicy` (regras ViaAccess para contingência) em `policy-snapshot.json` |
 | 2. Device config | `GET /api/bridge/device-config` | Ajusta parâmetros operacionais em `config.json` (ver abaixo) |
 | 3. Outbox | `POST /api/bridge/contingency/flush` | Reenvia passagens gravadas offline, se houver |
 
@@ -268,6 +297,8 @@ curl -s -X POST http://127.0.0.1:3710/scan \
 ## Relé GPIO (Linux)
 
 Com `relay.enabled: true` no config, o agent pulsa a linha em `gpiochip0` no offset configurado (`relayGpioPin`). Em Raspberry Pi, confira o offset com `gpioinfo` (BCM 17 nem sempre é offset 17).
+
+O relé só dispara quando o redeem retorna `correlationOutcome: AUTHORIZED` (padrão `unlockOnAuthorizedOnly: true`). Regras do ViaAccess no ponto, como **`after_hours`**, bloqueiam a autorização fora do horário (online e offline via `edgePolicy` no policy snapshot). O mesmo vale para VACP em `authorized_entry`.
 
 Em desenvolvimento (macOS) ou sem GPIO, usa driver simulado (log).
 

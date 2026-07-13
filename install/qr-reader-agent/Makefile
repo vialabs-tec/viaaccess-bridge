@@ -1,4 +1,4 @@
-.PHONY: build test run dev homologate setup-image arm64
+.PHONY: build test run dev homologate reset-setup setup-image arm64
 
 BINARY=viaaccess-qr-agent
 PKG=./cmd/viaaccess-qr-agent
@@ -27,6 +27,10 @@ dev:
 homologate:
 	@chmod +x scripts/homologate.sh
 	@./scripts/homologate.sh
+
+reset-setup:
+	@chmod +x scripts/reset-setup.sh
+	@./scripts/reset-setup.sh --dev --yes
 
 setup-image: arm64
 	@echo "Binary: bin/$(BINARY)-linux-arm64"

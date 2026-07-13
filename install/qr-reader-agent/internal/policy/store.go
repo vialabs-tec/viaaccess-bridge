@@ -28,6 +28,7 @@ type Snapshot struct {
 	MemberIDs        []string      `json:"memberIds,omitempty"`
 	MaxStaleHours    int           `json:"maxStaleHours,omitempty"`
 	TicketVerify     *TicketVerify `json:"ticketVerify,omitempty"`
+	EdgePolicy       *EdgePolicy   `json:"edgePolicy,omitempty"`
 }
 
 func (s Snapshot) Normalize() Snapshot {

@@ -41,9 +41,27 @@ Arquivo `policy-snapshot.json` (padrão `/etc/viaaccess-qr-reader/policy-snapsho
     "alg": "HS256",
     "keyB64": "...",
     "issuer": "viaaccess-identity-passage"
+  },
+  "edgePolicy": {
+    "version": "sha256:example",
+    "accessPointSlug": "entrada-principal",
+    "correlationWindowSeconds": 30,
+    "rules": {
+      "after_hours": {
+        "enabled": true,
+        "params": {
+          "afterTime": "22:00",
+          "beforeTime": "06:00",
+          "timezone": "America/Sao_Paulo"
+        }
+      }
+    },
+    "edgeCapabilities": ["after_hours"]
   }
 }
 ```
+
+Quando presente, `edgePolicy` espelha o snapshot ViaAccess (`GET /edge-policy`) e permite ao appliance aplicar regras offline (hoje `after_hours` → código `AFTER_HOURS` no redeem local).
 
 Fresh = `memberGrantCount > 0`, `ticketVerify` presente e idade &lt; `maxStaleHours` (padrão 168h / 7 dias).
 
@@ -56,7 +74,7 @@ POST /scan (ou stdin USB)
     │     └─ OK → scanPath ONLINE → relé / unlock
     │
     └─ falha de rede / timeout
-          ├─ mode CONTINGENCY → verify JWT st + grant snapshot + anti-replay
+          ├─ mode CONTINGENCY → verify JWT st + grant snapshot + edgePolicy (ex.: after_hours) + anti-replay
           │       └─ OK → scanPath CONTINGENCY → outbox + relé
           └─ mode SYNC_STALE → scanPath BLOCKED (HTTP 503)
 ```

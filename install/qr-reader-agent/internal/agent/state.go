@@ -159,6 +159,8 @@ func (s *State) Snapshot() map[string]any {
 			"accessPointSlug":   policySnap.AccessPointSlug,
 			"trustKeyId":        policySnap.TrustKeyID,
 			"memberGrantCount":  policySnap.MemberGrantCount,
+			"afterHours":        policySnap.ResolvedAfterHours() != nil,
+			"edgePolicyVersion": edgePolicyVersion(policySnap),
 			"stale":             !policySnap.IsFresh(now),
 			"staleAgeHours":     roundHours(policySnap.StaleAgeHours(now)),
 			"maxStaleHours":     policySnap.MaxStaleHours,
@@ -214,4 +216,11 @@ func ticketVerifyStatus(snap policy.Snapshot) string {
 		return "ready"
 	}
 	return "pending"
+}
+
+func edgePolicyVersion(snap policy.Snapshot) any {
+	if snap.EdgePolicy == nil || snap.EdgePolicy.Version == "" {
+		return nil
+	}
+	return snap.EdgePolicy.Version
 }

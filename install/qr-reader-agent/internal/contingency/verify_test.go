@@ -75,6 +75,69 @@ func TestVerifyAcceptsValidTicket(t *testing.T) {
 	}
 }
 
+func TestVerifyBlocksAfterHoursFromSnapshot(t *testing.T) {
+	secret := []byte("test-passage-ticket-secret-32chars-min")
+	keyB64 := base64.RawURLEncoding.EncodeToString(secret)
+
+	snap := policy.Snapshot{
+		GrantVersion:     "gv1",
+		AccessPointSlug:  "entrada",
+		MemberIDs:        []string{"mem_1"},
+		MemberGrantCount: 1,
+		TicketVerify: &policy.TicketVerify{
+			Alg:    "HS256",
+			KeyB64: keyB64,
+			Issuer: "viaaccess-identity-passage",
+		},
+		EdgePolicy: &policy.EdgePolicy{
+			Version:                  "v1",
+			CorrelationWindowSeconds: 30,
+			Rules: map[string]policy.EdgeRule{
+				"after_hours": {
+					Enabled: true,
+					Params: map[string]any{
+						"afterTime":  "22:00",
+						"beforeTime": "06:00",
+						"timezone":   "America/Sao_Paulo",
+					},
+				},
+			},
+			EdgeCapabilities: []string{"after_hours"},
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, passageClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "mem_1",
+			ID:        "intent_2",
+			Issuer:    "viaaccess-identity-passage",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute)),
+		},
+		Intent: "intent_2",
+		AP:     "entrada",
+		Org:    "org_1",
+		GV:     "gv1",
+	})
+	signed, err := token.SignedString(secret)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+
+	qrURL := "http://localhost:3100/r/intent_2?t=tok&st=" + signed
+	// 2026-06-26T02:00:00Z ≈ 23:00 America/Sao_Paulo
+	outside := time.Date(2026, 6, 26, 2, 0, 0, 0, time.UTC)
+
+	result := Verify(VerifyInput{
+		QRURL:           qrURL,
+		AccessPointSlug: "entrada",
+		Policy:          snap,
+		Now:             outside,
+	})
+	if result.OK || result.Code != "AFTER_HOURS" {
+		t.Fatalf("expected AFTER_HOURS block, got %+v", result)
+	}
+}
+
 func TestParseQRRequiresSignedTicket(t *testing.T) {
 	if _, ok := ParseQR("http://localhost/r/i1?t=tok"); ok {
 		t.Fatal("expected missing st to fail")

@@ -10,5 +10,21 @@
     "alg": "HS256",
     "keyB64": "REPLACE_AFTER_POLICY_SYNC",
     "issuer": "viaaccess-identity-passage"
+  },
+  "edgePolicy": {
+    "version": "sha256:example",
+    "accessPointSlug": "entrada-principal",
+    "correlationWindowSeconds": 30,
+    "rules": {
+      "after_hours": {
+        "enabled": true,
+        "params": {
+          "afterTime": "22:00",
+          "beforeTime": "06:00",
+          "timezone": "America/Sao_Paulo"
+        }
+      }
+    },
+    "edgeCapabilities": ["after_hours"]
   }
 }
