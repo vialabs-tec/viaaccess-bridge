@@ -214,7 +214,7 @@ No macOS use arquivos locais em `.dev/` em vez de `/etc/viaaccess-qr-reader/`.
 
 **Primeiro boot (testar provisionamento QR):** apague ou não crie `config.dev.json`, rode `make dev`, abra `http://127.0.0.1:3710/setup` e provisione com um `clm_…` do admin (`http://localhost:3100`).
 
-**Já configurado** — crie `config.dev.json` (gitignored) e use `make dev` ou `make run` (com `--stdin`).
+**Já configurado** — crie `config.dev.json` (gitignored) e use `make run` ou `make dev` (ambos usam `.dev/` + `--stdin` para leitor USB).
 
 Homologação rápida com leitor já ativo (`scripts/homologate.sh`):
 

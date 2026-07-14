@@ -14,7 +14,13 @@ test:
 	go test ./...
 
 run:
-	go run $(PKG) --config ./config.dev.json --stdin
+	@mkdir -p $(DEV_DIR)
+	go run $(PKG) \
+		--config ./config.dev.json \
+		--policy ./$(DEV_DIR)/policy-snapshot.json \
+		--outbox ./$(DEV_DIR)/outbox.json \
+		--nonce ./$(DEV_DIR)/consumed-intents.json \
+		--stdin
 
 dev:
 	@mkdir -p $(DEV_DIR)
@@ -22,7 +28,8 @@ dev:
 		--config ./config.dev.json \
 		--policy ./$(DEV_DIR)/policy-snapshot.json \
 		--outbox ./$(DEV_DIR)/outbox.json \
-		--nonce ./$(DEV_DIR)/consumed-intents.json
+		--nonce ./$(DEV_DIR)/consumed-intents.json \
+		--stdin
 
 homologate:
 	@chmod +x scripts/homologate.sh
