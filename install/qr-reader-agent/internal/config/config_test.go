@@ -36,11 +36,14 @@ func TestValidateOperationalRejectsBadKey(t *testing.T) {
 func TestApplyEnv(t *testing.T) {
 	cfg := DefaultRuntimeConfig()
 	env := map[string]string{
-		"IDENTITY_URL":         "http://identity.local/",
-		"IDENTITY_DEVICE_KEY":  "idb_from_env",
-		"EMIT_DETECTION":       "false",
-		"RELAY_ENABLED":        "true",
-		"RELAY_GPIO_PIN":       "22",
+		"IDENTITY_URL":           "http://identity.local/",
+		"IDENTITY_DEVICE_KEY":    "idb_from_env",
+		"EMIT_DETECTION":         "false",
+		"RELAY_ENABLED":          "true",
+		"RELAY_GPIO_PIN":         "22",
+		"STATUS_LED_ENABLED":   "true",
+		"STATUS_LED_RED_PIN":   "5",
+		"STATUS_LED_GREEN_PIN": "6",
 	}
 	cfg = ApplyEnv(cfg, env)
 	if !cfg.Configured || cfg.DeviceKey != "idb_from_env" {
@@ -51,5 +54,8 @@ func TestApplyEnv(t *testing.T) {
 	}
 	if !cfg.Relay.Enabled || cfg.Relay.GPIOPin != 22 {
 		t.Fatalf("unexpected relay: %+v", cfg.Relay)
+	}
+	if !cfg.StatusLED.Enabled || cfg.StatusLED.RedPin != 5 || cfg.StatusLED.GreenPin != 6 {
+		t.Fatalf("unexpected statusLed: %+v", cfg.StatusLED)
 	}
 }

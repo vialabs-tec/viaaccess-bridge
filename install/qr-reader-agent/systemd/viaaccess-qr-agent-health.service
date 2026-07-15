@@ -1,0 +1,18 @@
+[Unit]
+Description=ViaAccess QR Reader boot health check
+After=viaaccess-qr-agent.service network-online.target
+Requires=viaaccess-qr-agent.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=viaaccess
+Group=viaaccess
+Environment=AGENT_URL=http://127.0.0.1:3710
+Environment=HEALTHCHECK_RETRIES=30
+Environment=HEALTHCHECK_SLEEP_SEC=2
+ExecStart=/usr/local/lib/viaaccess-qr-reader/healthcheck.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

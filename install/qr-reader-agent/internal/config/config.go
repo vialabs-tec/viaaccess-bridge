@@ -31,6 +31,8 @@ type RuntimeConfig struct {
 
 	Relay RelayConfig `json:"relay"`
 
+	StatusLED StatusLEDConfig `json:"statusLed"`
+
 	Contingency ContingencyConfig `json:"contingency"`
 
 	SetupPIN string `json:"setupPin,omitempty"`
@@ -50,6 +52,18 @@ type RelayConfig struct {
 	ActiveHigh bool   `json:"activeHigh"`
 }
 
+// StatusLEDConfig drives a KY-016 RGB module (common cathode, onboard resistors).
+// Channels: R = stale/contingency, G = online, B = setup.
+type StatusLEDConfig struct {
+	Enabled    bool `json:"enabled"`
+	RedPin     int  `json:"redPin,omitempty"`
+	GreenPin   int  `json:"greenPin,omitempty"`
+	BluePin    int  `json:"bluePin,omitempty"`
+	ActiveHigh bool `json:"activeHigh"`
+	// YellowPin is a deprecated alias for RedPin (accepted when loading older env/JSON).
+	YellowPin int `json:"yellowPin,omitempty"`
+}
+
 func DefaultRuntimeConfig() RuntimeConfig {
 	return RuntimeConfig{
 		Configured:             false,
@@ -62,6 +76,13 @@ func DefaultRuntimeConfig() RuntimeConfig {
 			Enabled:    false,
 			GPIOPin:    17,
 			PulseMs:    3000,
+			ActiveHigh: true,
+		},
+		StatusLED: StatusLEDConfig{
+			Enabled:    false,
+			RedPin:     22, // KY-016 R
+			GreenPin:   27, // KY-016 G
+			BluePin:    23, // KY-016 B
 			ActiveHigh: true,
 		},
 		Contingency: ContingencyConfig{
@@ -110,6 +131,19 @@ func (c RuntimeConfig) Normalize() RuntimeConfig {
 	if c.Relay.GPIOPin <= 0 {
 		c.Relay.GPIOPin = 17
 	}
+	if c.StatusLED.RedPin <= 0 && c.StatusLED.YellowPin > 0 {
+		c.StatusLED.RedPin = c.StatusLED.YellowPin
+	}
+	if c.StatusLED.RedPin <= 0 {
+		c.StatusLED.RedPin = 22
+	}
+	if c.StatusLED.GreenPin <= 0 {
+		c.StatusLED.GreenPin = 27
+	}
+	if c.StatusLED.BluePin <= 0 {
+		c.StatusLED.BluePin = 23
+	}
+	c.StatusLED.YellowPin = 0
 	if c.Contingency.OnlineRedeemTimeoutMs <= 0 {
 		c.Contingency.OnlineRedeemTimeoutMs = 3000
 	}
@@ -192,6 +226,33 @@ func ApplyEnv(cfg RuntimeConfig, env map[string]string) RuntimeConfig {
 		var pin int
 		if _, err := fmt.Sscanf(v, "%d", &pin); err == nil && pin > 0 {
 			cfg.Relay.GPIOPin = pin
+		}
+	}
+	if v := strings.TrimSpace(get("STATUS_LED_ENABLED")); v == "true" {
+		cfg.StatusLED.Enabled = true
+	}
+	if v := strings.TrimSpace(get("STATUS_LED_RED_PIN")); v != "" {
+		var pin int
+		if _, err := fmt.Sscanf(v, "%d", &pin); err == nil && pin > 0 {
+			cfg.StatusLED.RedPin = pin
+		}
+	} else if v := strings.TrimSpace(get("STATUS_LED_YELLOW_PIN")); v != "" {
+		// Deprecated alias for KY-016 R channel.
+		var pin int
+		if _, err := fmt.Sscanf(v, "%d", &pin); err == nil && pin > 0 {
+			cfg.StatusLED.RedPin = pin
+		}
+	}
+	if v := strings.TrimSpace(get("STATUS_LED_GREEN_PIN")); v != "" {
+		var pin int
+		if _, err := fmt.Sscanf(v, "%d", &pin); err == nil && pin > 0 {
+			cfg.StatusLED.GreenPin = pin
+		}
+	}
+	if v := strings.TrimSpace(get("STATUS_LED_BLUE_PIN")); v != "" {
+		var pin int
+		if _, err := fmt.Sscanf(v, "%d", &pin); err == nil && pin > 0 {
+			cfg.StatusLED.BluePin = pin
 		}
 	}
 	if v := strings.TrimSpace(get("SETUP_PIN")); v != "" {

@@ -265,6 +265,8 @@ Variáveis em `/etc/viaaccess-qr-reader/env` (opcional, sobrescrevem JSON):
 | `UNLOCK_ON_AUTHORIZED_ONLY` | `true` (padrão) |
 | `RELAY_ENABLED` | `true` para GPIO |
 | `RELAY_GPIO_PIN` | Padrão `17` |
+| `STATUS_LED_ENABLED` | `true` para módulo KY-016 (SETUP / ONLINE / SYNC_STALE) |
+| `STATUS_LED_RED_PIN` / `GREEN` / `BLUE` | Canais R/G/B do KY-016 em `gpiochip0` (padrões 22 / 27 / 23) |
 | `STDIN_SCANNER` | `true` com `--stdin` no systemd para leitor USB |
 
 Config remota e ciclo de sync: ver [Operação contínua](#operação-contínua-sync-com-identity).
@@ -302,6 +304,28 @@ O relé só dispara quando o redeem retorna `correlationOutcome: AUTHORIZED` (pa
 
 Em desenvolvimento (macOS) ou sem GPIO, usa driver simulado (log).
 
+## Status LED KY-016 (SETUP / ONLINE / SYNC_STALE)
+
+Módulo **KY-016** (RGB 5mm, cátodo comum, resistores 1kΩ na placa). Com `STATUS_LED_ENABLED=true`:
+
+| Modo | Canal KY-016 | Padrão |
+|------|--------------|--------|
+| `ONLINE` | **G** verde | Fixo |
+| `SYNC_STALE` | **R** vermelho | Fixo |
+| `CONTINGENCY` | **R** vermelho | Pisca |
+| `SETUP` | **B** azul | Pisca |
+
+Ligação padrão:
+
+| KY-016 | Pi (BCM) | Physical |
+|--------|----------|----------|
+| GND | GND | pin 6 |
+| R | 22 | pin 15 |
+| G | 27 | pin 13 |
+| B | 23 | pin 16 |
+
+Sem GPIO (Mac), o driver simulado só registra no log. `/health` inclui `statusLed` (`module: KY-016`).
+
 ## Modo contingência (porta sem WAN)
 
 Celular com 4G continua emitindo QR no Identity. O appliance:
@@ -320,14 +344,34 @@ Documentação completa: [docs/contingency-mode.md](docs/contingency-mode.md).
 
 O QR dinâmico inclui `st` (JWT assinado pelo Identity). Em contingência, o agent valida `st` contra o snapshot local sem chamar a rede.
 
-## systemd
+## Install no Pi (day 1)
+
+No Mac (cross-compile):
 
 ```bash
-sudo install -m 0755 bin/viaaccess-qr-agent-linux-arm64 /usr/local/bin/viaaccess-qr-agent
-sudo install -d -m 0750 /etc/viaaccess-qr-reader
-sudo install -m 0640 systemd/viaaccess-qr-reader.env.example /etc/viaaccess-qr-reader/env
-sudo install systemd/viaaccess-qr-agent.service /etc/systemd/system/
-sudo systemctl enable --now viaaccess-qr-agent
+make release   # gera bin/viaaccess-qr-agent-linux-arm64
+```
+
+No Pi (copiar o repo ou só `bin/` + `scripts/` + `systemd/`):
+
+```bash
+sudo ./scripts/install.sh --binary bin/viaaccess-qr-agent-linux-arm64
+# com LEDs de estado:
+sudo ./scripts/install.sh --binary bin/viaaccess-qr-agent-linux-arm64 --enable-status-led
+```
+
+O script:
+
+1. Instala o binário em `/usr/local/bin/viaaccess-qr-agent`
+2. Cria usuário `viaaccess`, dirs em `/etc/viaaccess-qr-reader/`
+3. Habilita `viaaccess-qr-agent.service` + `viaaccess-qr-agent-health.service` (health no boot)
+4. Sobe o serviço (`http://<ip>:3710/setup` se ainda não provisionado)
+
+Healthcheck no boot: `scripts/healthcheck.sh` (JSON `/health` com `configured` + `operationMode`).
+
+```bash
+systemctl status viaaccess-qr-agent viaaccess-qr-agent-health
+journalctl -u viaaccess-qr-agent -u viaaccess-qr-agent-health -f
 ```
 
 ## Paridade com identity-qr-reader (TypeScript)
@@ -343,6 +387,8 @@ sudo systemctl enable --now viaaccess-qr-agent
 | Device config sync | — | `internal/syncclient` (`GET /api/bridge/device-config`) |
 | Provisionamento QR | — | `internal/setup` (`POST /api/setup/provision`) |
 | Revogação → setup | — | `internal/server/app.go` (hot reload) |
+| Status LED | — | `internal/statusled` |
+| Install + health boot | — | `scripts/install.sh`, `*-health.service` |
 
 ## Ver também
 

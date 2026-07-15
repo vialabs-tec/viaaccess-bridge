@@ -30,6 +30,7 @@ type State struct {
 	lastIdentityCheck time.Time
 	contingency       config.ContingencyConfig
 	relaySimulated    bool
+	statusLEDSnap     func() map[string]any
 
 	policy policy.Snapshot
 	outbox *outbox.Store
@@ -90,6 +91,12 @@ func (s *State) SetRelaySimulated(v bool) {
 	s.relaySimulated = v
 }
 
+func (s *State) SetStatusLEDSnapshot(fn func() map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.statusLEDSnap = fn
+}
+
 func (s *State) OperationMode() OperationMode {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -147,6 +154,7 @@ func (s *State) Snapshot() map[string]any {
 		"identityReachable": s.identityReachable,
 		"uptimeSec":         int(now.Sub(s.startedAt).Seconds()),
 		"relaySimulated":    s.relaySimulated,
+		"statusLed":         statusLEDSnapshot(s.statusLEDSnap),
 		"contingency": map[string]any{
 			"enabled":               s.contingency.Enabled,
 			"onlineRedeemTimeoutMs": s.contingency.OnlineRedeemTimeoutMs,
@@ -223,4 +231,11 @@ func edgePolicyVersion(snap policy.Snapshot) any {
 		return nil
 	}
 	return snap.EdgePolicy.Version
+}
+
+func statusLEDSnapshot(fn func() map[string]any) map[string]any {
+	if fn == nil {
+		return map[string]any{"enabled": false}
+	}
+	return fn()
 }

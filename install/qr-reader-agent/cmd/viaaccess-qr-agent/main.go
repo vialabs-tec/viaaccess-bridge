@@ -22,6 +22,7 @@ import (
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/relay"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/scan"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/server"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/statusled"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/unlock"
 )
 
@@ -79,8 +80,22 @@ func main() {
 		state.SetRelaySimulated(!relayGPIOAvailable())
 	}
 
+	ledDriver, err := statusled.NewDriver(cfg.StatusLED)
+	if err != nil {
+		log.Fatalf("statusled: %v", err)
+	}
+	ledCtrl := statusled.NewController(ledDriver)
+	defer ledCtrl.Close()
+	if cfg.StatusLED.Enabled {
+		state.SetStatusLEDSnapshot(ledCtrl.Snapshot)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	if cfg.StatusLED.Enabled {
+		go ledCtrl.Run(ctx, state.OperationMode)
+	}
 
 	app := server.NewApp(server.AppDeps{
 		RootCtx:      ctx,
