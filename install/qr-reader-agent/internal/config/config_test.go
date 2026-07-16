@@ -44,6 +44,9 @@ func TestApplyEnv(t *testing.T) {
 		"STATUS_LED_ENABLED":   "true",
 		"STATUS_LED_RED_PIN":   "5",
 		"STATUS_LED_GREEN_PIN": "6",
+		"DOOR_CONTACT_ENABLED": "true",
+		"DOOR_CONTACT_GPIO_PIN": "5",
+		"DOOR_CONTACT_SIMULATED": "true",
 	}
 	cfg = ApplyEnv(cfg, env)
 	if !cfg.Configured || cfg.DeviceKey != "idb_from_env" {
@@ -57,5 +60,8 @@ func TestApplyEnv(t *testing.T) {
 	}
 	if !cfg.StatusLED.Enabled || cfg.StatusLED.RedPin != 5 || cfg.StatusLED.GreenPin != 6 {
 		t.Fatalf("unexpected statusLed: %+v", cfg.StatusLED)
+	}
+	if !cfg.DoorContact.Enabled || cfg.DoorContact.GPIOPin != 5 || !cfg.DoorContact.Simulated {
+		t.Fatalf("unexpected doorContact: %+v", cfg.DoorContact)
 	}
 }

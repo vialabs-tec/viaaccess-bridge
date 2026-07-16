@@ -285,6 +285,14 @@ Config remota e ciclo de sync: ver [Operação contínua](#operação-contínua-
 
 Scanners HID aparecem como teclado. Sob **systemd**, `--stdin` **não** recebe essas teclas (o serviço não tem o TTY do USB). O unit de produção usa `--hid-auto`, que abre `/dev/input/by-id/*-event-kbd` com `EVIOCGRAB`.
 
+Após provisionar pelo `/setup` sem reiniciar, o agent também sobe o HID automaticamente (antes só iniciava no boot se já estivesse `configured`). Com binário antigo, reinicie o serviço:
+
+```bash
+sudo systemctl restart viaaccess-qr-agent
+journalctl -u viaaccess-qr-agent -n 50 --no-pager
+# espere: hid scanner active on /dev/input/...  ou  scan inputs active (... hid=...)
+```
+
 ```bash
 # Produção / Pi (systemd já passa --hid-auto)
 ./bin/viaaccess-qr-agent --config ./config.json --hid-auto
@@ -322,6 +330,45 @@ Com `relay.enabled: true` no config, o agent pulsa a linha em `gpiochip0` no off
 O relé só dispara quando o redeem retorna `correlationOutcome: AUTHORIZED` (padrão `unlockOnAuthorizedOnly: true`). Regras do ViaAccess no ponto, como **`after_hours`**, bloqueiam a autorização fora do horário (online e offline via `edgePolicy` no policy snapshot). O mesmo vale para VACP em `authorized_entry`.
 
 Em desenvolvimento (macOS) ou sem GPIO, usa driver simulado (log).
+
+## Sensor de porta MC38 (reed / door contact)
+
+Com `doorContact.enabled: true`, o agent observa um reed switch NF (ex.: MC38) e reporta
+`opened` / `closed` / `held_open` ao Identity (`POST /api/bridge/door-contact/events`).
+
+Padrão: **GPIO 5**, `activeLow: true` (porta fechada = contato fechado = linha em LOW com pull-up).
+Evite os pinos do relé (17) e do LED KY-016 (22/27/23).
+
+| MC38 | Pi (BCM) | Physical |
+|------|----------|----------|
+| COM / um fio | GPIO 5 | pin 29 |
+| outro fio | GND | pin 30 (ou outro GND) |
+
+Opcional: resistor série ~1kΩ no fio do GPIO. Dupont / Wago / borne.
+
+Config JSON:
+
+```json
+"doorContact": {
+  "enabled": true,
+  "gpioPin": 5,
+  "activeLow": true,
+  "debounceMs": 50,
+  "heldOpenAfterMs": 60000,
+  "simulated": false
+}
+```
+
+Env: `DOOR_CONTACT_ENABLED=true`, `DOOR_CONTACT_GPIO_PIN`, `DOOR_CONTACT_SIMULATED=true`, etc.
+
+Sem hardware (Mac / homologação), use `simulated: true` e force o estado:
+
+```bash
+curl -s -X POST http://127.0.0.1:3710/api/door-contact/sim -d '{"state":"open"}'
+curl -s -X POST http://127.0.0.1:3710/api/door-contact/sim -d '{"state":"closed"}'
+```
+
+`/health` inclui `doorContact: { enabled, state, simulated }`.
 
 ## Status LED KY-016 (SETUP / ONLINE / SYNC_STALE)
 
@@ -431,9 +478,10 @@ journalctl -u viaaccess-qr-agent -u viaaccess-qr-agent-health -f
 | Provisionamento QR | — | `internal/setup` (`POST /api/setup/provision`) |
 | Revogação → setup | — | `internal/server/app.go` (hot reload) |
 | Status LED | — | `internal/statusled` |
+| Door contact (MC38) | — | `internal/doorcontact` |
 | Install + health boot | — | `scripts/install.sh`, `*-health.service` |
 
 ## Ver também
 
-- Identity: `GET /api/bridge/device-config`, `POST /api/bridge/provision/claim`, `POST /api/bridge/intent/redeem` — OpenAPI em viaaccess-identity
+- Identity: `GET /api/bridge/device-config`, `POST /api/bridge/provision/claim`, `POST /api/bridge/intent/redeem`, `POST /api/bridge/door-contact/events` — OpenAPI em viaaccess-identity
 - [identity-qr-bridge.md](https://github.com/vialabs-tec/viaaccess-identity/blob/main/docs/installation/identity-qr-bridge.md)

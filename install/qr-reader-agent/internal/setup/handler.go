@@ -84,6 +84,7 @@ func (h *Handler) HandleSave(w http.ResponseWriter, r *http.Request) {
 		cfg.Relay.PulseMs = *req.RelayPulseMs
 	}
 	cfg.SetupPIN = strings.TrimSpace(h.PIN)
+	cfg = preserveLocalHardware(cfg, h.ConfigPath)
 	cfg = cfg.Normalize()
 
 	if err := cfg.ValidateOperational(); err != nil {
@@ -165,6 +166,7 @@ func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
 		cfg.Relay.PulseMs = *req.RelayPulseMs
 	}
 	cfg.SetupPIN = strings.TrimSpace(h.PIN)
+	cfg = preserveLocalHardware(cfg, h.ConfigPath)
 	cfg = cfg.Normalize()
 
 	if err := cfg.ValidateOperational(); err != nil {
@@ -192,6 +194,18 @@ func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
 		"accessPointSlug": cfg.AccessPointSlug,
 		"deviceId":        cfg.DeviceID,
 	})
+}
+
+// preserveLocalHardware keeps appliance-only settings (door contact, status LED)
+// across setup save / QR provision, which otherwise start from defaults.
+func preserveLocalHardware(cfg appconfig.RuntimeConfig, configPath string) appconfig.RuntimeConfig {
+	existing, err := appconfig.LoadFromFile(configPath)
+	if err != nil {
+		return cfg
+	}
+	cfg.DoorContact = existing.DoorContact
+	cfg.StatusLED = existing.StatusLED
+	return cfg
 }
 
 func writeJSON(w http.ResponseWriter, status int, body map[string]any) {

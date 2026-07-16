@@ -15,6 +15,7 @@ import (
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/buildinfo"
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/doorcontact"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/ota"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
@@ -41,10 +42,16 @@ type App struct {
 	outbox        *outbox.Store
 	nonce         *contingency.NonceStore
 	relayService  *relay.Service
+	doorContact   *doorcontact.Service
 	syncCancel    context.CancelFunc
 	probeCancel   context.CancelFunc
 	commandCancel context.CancelFunc
+	doorCancel    context.CancelFunc
 	deviceConfigETag string
+
+	// startScanners runs once when the appliance becomes operational (boot or hot provision).
+	startScannersOnce sync.Once
+	startScanners     func()
 }
 
 type AppDeps struct {
@@ -58,6 +65,9 @@ type AppDeps struct {
 	Outbox       *outbox.Store
 	Nonce        *contingency.NonceStore
 	RelayService *relay.Service
+	DoorContact  *doorcontact.Service
+	// StartScanners starts HID/stdin readers. Called once on enter-operational (boot or provision).
+	StartScanners func()
 }
 
 func NewApp(deps AppDeps) *App {
@@ -72,10 +82,17 @@ func NewApp(deps AppDeps) *App {
 		outbox:       deps.Outbox,
 		nonce:        deps.Nonce,
 		relayService: deps.RelayService,
+		doorContact:  deps.DoorContact,
+		startScanners: deps.StartScanners,
+	}
+	if app.doorContact != nil {
+		app.doorContact.SetEventHandler(app.onDoorContactEvent)
+		app.state.SetDoorContactSnapshot(app.doorContact.Snapshot)
 	}
 	app.rebuildHandlerLocked()
 	if app.cfg.Configured {
 		app.startBackgroundWorkersLocked()
+		app.ensureScannersStartedLocked()
 	}
 	return app
 }
@@ -97,6 +114,7 @@ func (a *App) SaveConfig(cfg appconfig.RuntimeConfig) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	wasConfigured := a.cfg.Configured
 	cfg = cfg.Normalize()
 	if err := appconfig.SaveToFile(a.configPath, cfg); err != nil {
 		return err
@@ -106,12 +124,26 @@ func (a *App) SaveConfig(cfg appconfig.RuntimeConfig) error {
 		a.state.SetConfigured(true)
 		a.rebuildHandlerLocked()
 		a.startBackgroundWorkersLocked()
+		// Hot provision: HTTP/sync start above, but HID was only started at boot when
+		// already configured — start scanners the first time we become operational.
+		if !wasConfigured {
+			a.ensureScannersStartedLocked()
+		}
 		log.Printf("operational mode active — access point %s", cfg.AccessPointSlug)
 	} else {
 		a.state.SetConfigured(false)
 		a.rebuildHandlerLocked()
 	}
 	return nil
+}
+
+func (a *App) ensureScannersStartedLocked() {
+	if a.startScanners == nil {
+		return
+	}
+	a.startScannersOnce.Do(func() {
+		go a.startScanners()
+	})
 }
 
 func (a *App) enterSetupMode(reason string) {
@@ -157,6 +189,7 @@ func (a *App) rebuildHandlerLocked() {
 		},
 		OnConfigSaved: a.SaveConfig,
 		RelayService:  a.relayService,
+		DoorContact:   a.doorContact,
 	})
 }
 
@@ -177,6 +210,12 @@ func (a *App) startBackgroundWorkersLocked() {
 	cmdCtx, cmdCancel := context.WithCancel(a.rootCtx)
 	a.commandCancel = cmdCancel
 	go a.runCommandLoop(cmdCtx)
+
+	if a.doorContact != nil && a.doorContact.Enabled() {
+		doorCtx, doorCancel := context.WithCancel(a.rootCtx)
+		a.doorCancel = doorCancel
+		go a.doorContact.Run(doorCtx)
+	}
 }
 
 func (a *App) stopBackgroundWorkersLocked() {
@@ -192,6 +231,39 @@ func (a *App) stopBackgroundWorkersLocked() {
 		a.commandCancel()
 		a.commandCancel = nil
 	}
+	if a.doorCancel != nil {
+		a.doorCancel()
+		a.doorCancel = nil
+	}
+}
+
+func (a *App) onDoorContactEvent(ev doorcontact.Event) {
+	cfg := a.Config()
+	if !cfg.Configured || !cfg.DoorContact.Enabled {
+		return
+	}
+	client := syncclient.NewClient(syncclient.ClientConfig{
+		IdentityURL:        cfg.IdentityURL,
+		DeviceKey:          cfg.DeviceKey,
+		EmitDetection:      cfg.EmitDetection,
+		RelayEnabled:       cfg.Relay.Enabled,
+		DoorContactEnabled: cfg.DoorContact.Enabled,
+		AgentVersion:       buildinfo.Version,
+	}, nil)
+	ctx, cancel := context.WithTimeout(a.rootCtx, 12*time.Second)
+	defer cancel()
+	if err := client.PostDoorContactEvent(ctx, syncclient.DoorContactEvent{
+		Kind: string(ev.Kind),
+		At:   ev.At,
+	}); err != nil {
+		if errors.Is(err, syncclient.ErrBridgeUnauthorized) {
+			a.onBridgeUnauthorized("door-contact rejected device key")
+			return
+		}
+		log.Printf("door-contact event %s failed: %v", ev.Kind, err)
+		return
+	}
+	log.Printf("door-contact: %s", ev.Kind)
 }
 
 func (a *App) probeIdentity(ctx context.Context) {
@@ -222,11 +294,12 @@ func (a *App) pingIdentity(ctx context.Context) error {
 func (a *App) runSyncLoop(ctx context.Context) {
 	cfg := a.Config()
 	client := syncclient.NewClient(syncclient.ClientConfig{
-		IdentityURL:   cfg.IdentityURL,
-		DeviceKey:     cfg.DeviceKey,
-		EmitDetection: cfg.EmitDetection,
-		RelayEnabled:  cfg.Relay.Enabled,
-		AgentVersion:  buildinfo.Version,
+		IdentityURL:        cfg.IdentityURL,
+		DeviceKey:          cfg.DeviceKey,
+		EmitDetection:      cfg.EmitDetection,
+		RelayEnabled:       cfg.Relay.Enabled,
+		DoorContactEnabled: cfg.DoorContact.Enabled,
+		AgentVersion:       buildinfo.Version,
 	}, nil)
 
 	ticker := time.NewTicker(60 * time.Second)
@@ -235,11 +308,12 @@ func (a *App) runSyncLoop(ctx context.Context) {
 	syncOnce := func() {
 		current := a.Config()
 		client = syncclient.NewClient(syncclient.ClientConfig{
-			IdentityURL:   current.IdentityURL,
-			DeviceKey:     current.DeviceKey,
-			EmitDetection: current.EmitDetection,
-			RelayEnabled:  current.Relay.Enabled,
-			AgentVersion:  buildinfo.Version,
+			IdentityURL:        current.IdentityURL,
+			DeviceKey:          current.DeviceKey,
+			EmitDetection:      current.EmitDetection,
+			RelayEnabled:       current.Relay.Enabled,
+			DoorContactEnabled: current.DoorContact.Enabled,
+			AgentVersion:       buildinfo.Version,
 		}, nil)
 
 		syncCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -373,11 +447,12 @@ func (a *App) pollCommandsOnce(ctx context.Context, idle, fast time.Duration) ti
 		return idle
 	}
 	client := syncclient.NewClient(syncclient.ClientConfig{
-		IdentityURL:   cfg.IdentityURL,
-		DeviceKey:     cfg.DeviceKey,
-		EmitDetection: cfg.EmitDetection,
-		RelayEnabled:  cfg.Relay.Enabled,
-		AgentVersion:  buildinfo.Version,
+		IdentityURL:        cfg.IdentityURL,
+		DeviceKey:          cfg.DeviceKey,
+		EmitDetection:      cfg.EmitDetection,
+		RelayEnabled:       cfg.Relay.Enabled,
+		DoorContactEnabled: cfg.DoorContact.Enabled,
+		AgentVersion:       buildinfo.Version,
 	}, nil)
 
 	pollCtx, cancel := context.WithTimeout(ctx, 8*time.Second)

@@ -29,6 +29,14 @@ func setRelayEnabledHeader(req *http.Request, enabled bool) {
 	}
 }
 
+func setDoorContactEnabledHeader(req *http.Request, enabled bool) {
+	if enabled {
+		req.Header.Set("X-ViaAccess-Door-Contact-Enabled", "true")
+	} else {
+		req.Header.Set("X-ViaAccess-Door-Contact-Enabled", "false")
+	}
+}
+
 func setAgentVersionHeader(req *http.Request, version string) {
 	version = strings.TrimSpace(version)
 	if version == "" {
@@ -40,5 +48,6 @@ func setAgentVersionHeader(req *http.Request, version string) {
 func (c *Client) setBridgeHeaders(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
 	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
+	setDoorContactEnabledHeader(req, c.cfg.DoorContactEnabled)
 	setAgentVersionHeader(req, c.cfg.AgentVersion)
 }

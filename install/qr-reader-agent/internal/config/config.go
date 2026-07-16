@@ -33,6 +33,8 @@ type RuntimeConfig struct {
 
 	StatusLED StatusLEDConfig `json:"statusLed"`
 
+	DoorContact DoorContactConfig `json:"doorContact"`
+
 	Contingency ContingencyConfig `json:"contingency"`
 
 	SetupPIN string `json:"setupPin,omitempty"`
@@ -50,6 +52,18 @@ type RelayConfig struct {
 	GPIOPin    int    `json:"gpioPin,omitempty"`
 	PulseMs    int    `json:"pulseMs"`
 	ActiveHigh bool   `json:"activeHigh"`
+}
+
+// DoorContactConfig watches an MC38 (or similar) reed switch on GPIO.
+// Default activeLow=true: closed door pulls the line LOW (NF + pull-up).
+type DoorContactConfig struct {
+	Enabled         bool `json:"enabled"`
+	GPIOPin         int  `json:"gpioPin,omitempty"`
+	ActiveLow       bool `json:"activeLow"`
+	DebounceMs      int  `json:"debounceMs"`
+	HeldOpenAfterMs int  `json:"heldOpenAfterMs"`
+	// Simulated forces the in-memory driver (also used when GPIO is unavailable).
+	Simulated bool `json:"simulated"`
 }
 
 // StatusLEDConfig drives a KY-016 RGB module (common cathode, onboard resistors).
@@ -84,6 +98,14 @@ func DefaultRuntimeConfig() RuntimeConfig {
 			GreenPin:   27, // KY-016 G
 			BluePin:    23, // KY-016 B
 			ActiveHigh: true,
+		},
+		DoorContact: DoorContactConfig{
+			Enabled:         false,
+			GPIOPin:         5,
+			ActiveLow:       true,
+			DebounceMs:      50,
+			HeldOpenAfterMs: 60_000,
+			Simulated:       false,
 		},
 		Contingency: ContingencyConfig{
 			Enabled:               true,
@@ -144,6 +166,15 @@ func (c RuntimeConfig) Normalize() RuntimeConfig {
 		c.StatusLED.BluePin = 23
 	}
 	c.StatusLED.YellowPin = 0
+	if c.DoorContact.GPIOPin <= 0 {
+		c.DoorContact.GPIOPin = 5
+	}
+	if c.DoorContact.DebounceMs <= 0 {
+		c.DoorContact.DebounceMs = 50
+	}
+	if c.DoorContact.HeldOpenAfterMs <= 0 {
+		c.DoorContact.HeldOpenAfterMs = 60_000
+	}
 	if c.Contingency.OnlineRedeemTimeoutMs <= 0 {
 		c.Contingency.OnlineRedeemTimeoutMs = 3000
 	}
@@ -272,6 +303,33 @@ func ApplyEnv(cfg RuntimeConfig, env map[string]string) RuntimeConfig {
 		if _, err := fmt.Sscanf(v, "%d", &hours); err == nil && hours > 0 {
 			cfg.Contingency.MaxPolicyStaleHours = hours
 		}
+	}
+	if v := strings.TrimSpace(get("DOOR_CONTACT_ENABLED")); v == "true" {
+		cfg.DoorContact.Enabled = true
+	}
+	if v := strings.TrimSpace(get("DOOR_CONTACT_GPIO_PIN")); v != "" {
+		var pin int
+		if _, err := fmt.Sscanf(v, "%d", &pin); err == nil && pin > 0 {
+			cfg.DoorContact.GPIOPin = pin
+		}
+	}
+	if v := strings.TrimSpace(get("DOOR_CONTACT_ACTIVE_LOW")); v == "false" {
+		cfg.DoorContact.ActiveLow = false
+	}
+	if v := strings.TrimSpace(get("DOOR_CONTACT_DEBOUNCE_MS")); v != "" {
+		var ms int
+		if _, err := fmt.Sscanf(v, "%d", &ms); err == nil && ms > 0 {
+			cfg.DoorContact.DebounceMs = ms
+		}
+	}
+	if v := strings.TrimSpace(get("DOOR_CONTACT_HELD_OPEN_AFTER_MS")); v != "" {
+		var ms int
+		if _, err := fmt.Sscanf(v, "%d", &ms); err == nil && ms > 0 {
+			cfg.DoorContact.HeldOpenAfterMs = ms
+		}
+	}
+	if v := strings.TrimSpace(get("DOOR_CONTACT_SIMULATED")); v == "true" {
+		cfg.DoorContact.Simulated = true
 	}
 	return cfg.Normalize()
 }

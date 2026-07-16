@@ -19,11 +19,12 @@ import (
 var ErrBridgeUnauthorized = errors.New("bridge device key unauthorized")
 
 type ClientConfig struct {
-	IdentityURL   string
-	DeviceKey     string
-	EmitDetection bool
-	RelayEnabled  bool
-	AgentVersion  string
+	IdentityURL        string
+	DeviceKey          string
+	EmitDetection      bool
+	RelayEnabled       bool
+	DoorContactEnabled bool
+	AgentVersion       string
 }
 
 type HTTPDoer interface {
@@ -54,6 +55,7 @@ func (c *Client) FetchPolicy(ctx context.Context) (policy.Snapshot, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
 	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
+	setDoorContactEnabledHeader(req, c.cfg.DoorContactEnabled)
 	setAgentVersionHeader(req, c.cfg.AgentVersion)
 
 	res, err := c.client.Do(req)

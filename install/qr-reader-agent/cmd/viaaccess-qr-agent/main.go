@@ -16,6 +16,7 @@ import (
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/agent"
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/doorcontact"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/hidwedge"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
@@ -93,6 +94,12 @@ func main() {
 		state.SetStatusLEDSnapshot(ledCtrl.Snapshot)
 	}
 
+	doorContact, err := doorcontact.NewService(cfg.DoorContact, nil)
+	if err != nil {
+		log.Fatalf("doorcontact: %v", err)
+	}
+	defer doorContact.Close()
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -100,7 +107,8 @@ func main() {
 		go ledCtrl.Run(ctx, state.OperationMode)
 	}
 
-	app := server.NewApp(server.AppDeps{
+	var app *server.App
+	app = server.NewApp(server.AppDeps{
 		RootCtx:      ctx,
 		ConfigPath:   *configPath,
 		PolicyPath:   *policyPath,
@@ -111,6 +119,10 @@ func main() {
 		Outbox:       outboxStore,
 		Nonce:        nonceStore,
 		RelayService: relayService,
+		DoorContact:  doorContact,
+		StartScanners: func() {
+			startScanInputs(ctx, app, policyHolder, outboxStore, nonceStore, relayService, state, *stdinMode, *hidDevice, *hidAuto)
+		},
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.HTTPHost, cfg.HTTPPort)
@@ -130,27 +142,10 @@ func main() {
 		if err := cfg.ValidateOperational(); err != nil {
 			log.Printf("warning: %v", err)
 		}
-		scanSink := newScanSink(app, policyHolder, outboxStore, nonceStore, relayService, state)
-		if *stdinMode {
-			go runStdinScanner(ctx, scanSink)
-		}
-		hidPath := strings.TrimSpace(*hidDevice)
-		if hidPath == "" && *hidAuto {
-			if p, err := hidwedge.DiscoverKeyboardDevice(); err != nil {
-				log.Printf("hid-auto: %v", err)
-			} else {
-				hidPath = p
-			}
-		}
-		if hidPath != "" {
-			go runHIDScanner(ctx, hidPath, scanSink)
-		}
 		log.Printf(
-			"viaaccess-qr-agent listening on http://%s (mode=%s stdin=%v hid=%q)",
+			"viaaccess-qr-agent listening on http://%s (mode=%s)",
 			addr,
 			state.OperationMode(),
-			*stdinMode,
-			hidPath,
 		)
 	} else {
 		log.Printf("viaaccess-qr-agent setup mode on http://%s/setup", addr)
@@ -160,6 +155,36 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
+}
+
+func startScanInputs(
+	ctx context.Context,
+	app *server.App,
+	policyHolder *policy.Holder,
+	outboxStore *outbox.Store,
+	nonceStore *contingency.NonceStore,
+	relayService *relay.Service,
+	state *agent.State,
+	stdinMode bool,
+	hidDevice string,
+	hidAuto bool,
+) {
+	scanSink := newScanSink(app, policyHolder, outboxStore, nonceStore, relayService, state)
+	if stdinMode {
+		go runStdinScanner(ctx, scanSink)
+	}
+	hidPath := strings.TrimSpace(hidDevice)
+	if hidPath == "" && hidAuto {
+		if p, err := hidwedge.DiscoverKeyboardDevice(); err != nil {
+			log.Printf("hid-auto: %v", err)
+		} else {
+			hidPath = p
+		}
+	}
+	if hidPath != "" {
+		go runHIDScanner(ctx, hidPath, scanSink)
+	}
+	log.Printf("scan inputs active (stdin=%v hid=%q)", stdinMode, hidPath)
 }
 
 type configSource interface {

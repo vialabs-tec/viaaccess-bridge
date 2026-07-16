@@ -7,10 +7,12 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/agent"
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/doorcontact"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/redeem"
@@ -37,6 +39,7 @@ type Options struct {
 	OnScanComplete func(path agent.ScanPath, qrURL string, result redeem.Result)
 	OnConfigSaved  func(cfg appconfig.RuntimeConfig) error
 	RelayService   *relay.Service
+	DoorContact    *doorcontact.Service
 }
 
 func NewMux(opts Options) http.Handler {
@@ -69,6 +72,9 @@ func NewMux(opts Options) http.Handler {
 				"operationModeLabel": "Aguardando provisionamento",
 			})
 		})
+		if opts.DoorContact != nil && opts.DoorContact.Simulated() {
+			mux.HandleFunc("POST /api/door-contact/sim", doorContactSimHandler(opts.DoorContact))
+		}
 		return mux
 	}
 
@@ -121,7 +127,47 @@ func NewMux(opts Options) http.Handler {
 	mux.HandleFunc("POST /scan", scanHandler)
 	mux.HandleFunc("POST /", scanHandler)
 
+	if opts.DoorContact != nil && opts.DoorContact.Simulated() {
+		mux.HandleFunc("POST /api/door-contact/sim", doorContactSimHandler(opts.DoorContact))
+	}
+
 	return mux
+}
+
+func doorContactSimHandler(svc *doorcontact.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid body"})
+			return
+		}
+		var body struct {
+			State string `json:"state"`
+		}
+		if err := json.Unmarshal(raw, &body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid json"})
+			return
+		}
+		switch strings.ToLower(strings.TrimSpace(body.State)) {
+		case "open":
+			if err := svc.SetSimOpen(true); err != nil {
+				writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": err.Error()})
+				return
+			}
+		case "closed":
+			if err := svc.SetSimOpen(false); err != nil {
+				writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": err.Error()})
+				return
+			}
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"ok":    false,
+				"error": "state must be open or closed",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "state": body.State})
+	}
 }
 
 func pingIdentityURL(ctx context.Context, identityURL string) error {
