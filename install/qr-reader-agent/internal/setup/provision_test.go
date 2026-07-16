@@ -41,3 +41,18 @@ func TestParseProvisionInputRejectsInvalid(t *testing.T) {
 		t.Fatal("expected error without identity URL")
 	}
 }
+
+func TestPreferReachableIdentityURL(t *testing.T) {
+	got := PreferReachableIdentityURL("http://192.168.5.10:3100", "http://localhost:3100")
+	if got != "http://192.168.5.10:3100" {
+		t.Fatalf("got %q", got)
+	}
+	got = PreferReachableIdentityURL("http://192.168.5.10:3100", "https://identity.example")
+	if got != "https://identity.example" {
+		t.Fatalf("got %q", got)
+	}
+	got = PreferReachableIdentityURL("", "http://localhost:3100")
+	if got != "http://localhost:3100" {
+		t.Fatalf("got %q", got)
+	}
+}

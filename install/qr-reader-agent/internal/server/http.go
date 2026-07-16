@@ -62,9 +62,11 @@ func NewMux(opts Options) http.Handler {
 		mux.HandleFunc("POST /api/setup/provision", setupHandler.HandleProvision)
 		mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{
-				"ok":            false,
-				"configured":    false,
-				"setupRequired": true,
+				"ok":                 false,
+				"configured":         false,
+				"setupRequired":      true,
+				"operationMode":      "SETUP",
+				"operationModeLabel": "Aguardando provisionamento",
 			})
 		})
 		return mux

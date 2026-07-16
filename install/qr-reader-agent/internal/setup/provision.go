@@ -43,6 +43,32 @@ type claimAPIResponse struct {
 	Code  string `json:"code"`
 }
 
+// PreferReachableIdentityURL keeps the URL that already reached Identity on the LAN
+// when the claim API returns a loopback APP_URL (common in local/dev setups).
+func PreferReachableIdentityURL(usedForClaim, fromAPI string) string {
+	used := strings.TrimRight(strings.TrimSpace(usedForClaim), "/")
+	api := strings.TrimRight(strings.TrimSpace(fromAPI), "/")
+	if api == "" {
+		return used
+	}
+	if used == "" {
+		return api
+	}
+	if isLoopbackBaseURL(api) && !isLoopbackBaseURL(used) {
+		return used
+	}
+	return api
+}
+
+func isLoopbackBaseURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Hostname() == "" {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
 // ParseProvisionInput extracts identity base URL and claim token from paste (URL or clm_ token).
 func ParseProvisionInput(raw, fallbackIdentityURL string) (identityURL, claimToken string, err error) {
 	trimmed := strings.TrimSpace(raw)

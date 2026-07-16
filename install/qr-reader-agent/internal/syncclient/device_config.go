@@ -35,6 +35,7 @@ func (c *Client) FetchDeviceConfig(ctx context.Context, ifNoneMatch string) (Dev
 	if etag := strings.TrimSpace(ifNoneMatch); etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}
+	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
 
 	res, err := c.client.Do(req)
 	if err != nil {

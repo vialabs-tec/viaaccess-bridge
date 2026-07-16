@@ -156,6 +156,7 @@ A cada **~60 segundos** (e uma vez ao entrar em modo ONLINE), o loop de sync exe
 |-------|-------------------|---------------------|
 | 1. Policy | `GET /api/bridge/policy-snapshot` | Atualiza grants, `ticketVerify` e `edgePolicy` (regras ViaAccess para contingência) em `policy-snapshot.json` |
 | 2. Device config | `GET /api/bridge/device-config` | Ajusta parâmetros operacionais em `config.json` (ver abaixo) |
+| 2b. Remote commands | `GET /api/bridge/commands` (+ ack) | `UNLOCK` do admin (abrir porta sem QR); poll ~2s |
 | 3. Outbox | `POST /api/bridge/contingency/flush` | Reenvia passagens gravadas offline, se houver |
 
 ```
@@ -282,11 +283,29 @@ Config remota e ciclo de sync: ver [Operação contínua](#operação-contínua-
 
 ### Leitor USB (keyboard wedge)
 
+Scanners HID aparecem como teclado. Sob **systemd**, `--stdin` **não** recebe essas teclas (o serviço não tem o TTY do USB). O unit de produção usa `--hid-auto`, que abre `/dev/input/by-id/*-event-kbd` com `EVIOCGRAB`.
+
 ```bash
+# Produção / Pi (systemd já passa --hid-auto)
+./bin/viaaccess-qr-agent --config ./config.json --hid-auto
+
+# Fixar dispositivo (se houver vários teclados)
+./bin/viaaccess-qr-agent --config ./config.json \
+  --hid-device /dev/input/by-id/usb-*-event-kbd
+
+# Dev no Mac / pipe
 ./bin/viaaccess-qr-agent --config ./config.json --stdin
 ```
 
-Ou via systemd (`--stdin` no unit file).
+O usuário do serviço (`viaaccess`) precisa do grupo `input` (o `install.sh` e o unit com `SupplementaryGroups=input` já fazem isso).
+
+Se `hid-auto` falhar com “multiple keyboards”, liste e fixe:
+
+```bash
+ls -l /dev/input/by-id/*-event-kbd
+# em /etc/viaaccess-qr-reader/env:
+# HID_SCANNER_DEVICE=/dev/input/by-id/usb-SEU_LEITOR-event-kbd
+```
 
 ### Catraca / controlador HTTP
 
@@ -381,7 +400,7 @@ journalctl -u viaaccess-qr-agent -u viaaccess-qr-agent-health -f
 | Redeem Identity | `redeem.ts` | `internal/redeem` |
 | Debounce + `/scan` | `turnstile-http.ts` | `internal/scan` |
 | Unlock webhook | `unlock-webhook.ts` | `internal/unlock` |
-| USB stdin | `scan-redeem.ts` | `--stdin` |
+| USB keyboard wedge | `scan-redeem.ts` (`--stdin`) | `--hid-auto` / `--hid-device` (evdev); `--stdin` for dev pipes |
 | Contingency verify | — | `internal/contingency` |
 | Policy sync + flush | — | `internal/syncclient` |
 | Device config sync | — | `internal/syncclient` (`GET /api/bridge/device-config`) |

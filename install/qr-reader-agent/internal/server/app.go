@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +39,7 @@ type App struct {
 	relayService  *relay.Service
 	syncCancel    context.CancelFunc
 	probeCancel   context.CancelFunc
+	commandCancel context.CancelFunc
 	deviceConfigETag string
 }
 
@@ -167,6 +169,10 @@ func (a *App) startBackgroundWorkersLocked() {
 	probeCtx, probeCancel := context.WithCancel(a.rootCtx)
 	a.probeCancel = probeCancel
 	go a.probeIdentity(probeCtx)
+
+	cmdCtx, cmdCancel := context.WithCancel(a.rootCtx)
+	a.commandCancel = cmdCancel
+	go a.runCommandLoop(cmdCtx)
 }
 
 func (a *App) stopBackgroundWorkersLocked() {
@@ -177,6 +183,10 @@ func (a *App) stopBackgroundWorkersLocked() {
 	if a.probeCancel != nil {
 		a.probeCancel()
 		a.probeCancel = nil
+	}
+	if a.commandCancel != nil {
+		a.commandCancel()
+		a.commandCancel = nil
 	}
 }
 
@@ -211,6 +221,7 @@ func (a *App) runSyncLoop(ctx context.Context) {
 		IdentityURL:   cfg.IdentityURL,
 		DeviceKey:     cfg.DeviceKey,
 		EmitDetection: cfg.EmitDetection,
+		RelayEnabled:  cfg.Relay.Enabled,
 	}, nil)
 
 	ticker := time.NewTicker(60 * time.Second)
@@ -222,6 +233,7 @@ func (a *App) runSyncLoop(ctx context.Context) {
 			IdentityURL:   current.IdentityURL,
 			DeviceKey:     current.DeviceKey,
 			EmitDetection: current.EmitDetection,
+			RelayEnabled:  current.Relay.Enabled,
 		}, nil)
 
 		syncCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -319,4 +331,83 @@ func (a *App) syncDeviceConfigLocked(client *syncclient.Client, ctx context.Cont
 	a.rebuildHandlerLocked()
 	log.Printf("device config applied: debounceMs=%d emitDetection=%v contingency=%v",
 		updated.DebounceMs, updated.EmitDetection, updated.Contingency.Enabled)
+}
+
+func (a *App) runCommandLoop(ctx context.Context) {
+	// Faster than policy sync so admin "Open door" feels near real-time.
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	pollOnce := func() {
+		cfg := a.Config()
+		if !cfg.Configured || strings.TrimSpace(cfg.DeviceKey) == "" {
+			return
+		}
+		client := syncclient.NewClient(syncclient.ClientConfig{
+			IdentityURL:   cfg.IdentityURL,
+			DeviceKey:     cfg.DeviceKey,
+			EmitDetection: cfg.EmitDetection,
+			RelayEnabled:  cfg.Relay.Enabled,
+		}, nil)
+
+		pollCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		defer cancel()
+		cmds, err := client.FetchCommands(pollCtx)
+		if err != nil {
+			if errors.Is(err, syncclient.ErrBridgeUnauthorized) {
+				a.onBridgeUnauthorized("commands poll rejected device key")
+				return
+			}
+			log.Printf("commands poll failed: %v", err)
+			return
+		}
+		a.state.SetIdentityReachable(true)
+
+		for _, cmd := range cmds {
+			a.executeRemoteCommand(ctx, client, cmd)
+		}
+	}
+
+	pollOnce()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pollOnce()
+		}
+	}
+}
+
+func (a *App) executeRemoteCommand(ctx context.Context, client *syncclient.Client, cmd syncclient.PendingCommand) {
+	ackCtx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+
+	switch strings.ToUpper(strings.TrimSpace(cmd.Type)) {
+	case "UNLOCK":
+		cfg := a.Config()
+		if !cfg.Relay.Enabled || a.relayService == nil {
+			log.Printf("remote UNLOCK %s ignored — relay disabled", cmd.ID)
+			if err := client.AckCommand(ackCtx, cmd.ID, false, "relay disabled on appliance"); err != nil {
+				log.Printf("ack failed: %v", err)
+			}
+			return
+		}
+		if err := a.relayService.Pulse(ackCtx); err != nil {
+			log.Printf("remote UNLOCK %s pulse failed: %v", cmd.ID, err)
+			if ackErr := client.AckCommand(ackCtx, cmd.ID, false, err.Error()); ackErr != nil {
+				log.Printf("ack failed: %v", ackErr)
+			}
+			return
+		}
+		log.Printf("remote UNLOCK %s ok reason=%q", cmd.ID, cmd.Reason)
+		if err := client.AckCommand(ackCtx, cmd.ID, true, ""); err != nil {
+			log.Printf("ack failed: %v", err)
+		}
+	default:
+		log.Printf("remote command %s unknown type %q", cmd.ID, cmd.Type)
+		if err := client.AckCommand(ackCtx, cmd.ID, false, "unsupported command type"); err != nil {
+			log.Printf("ack failed: %v", err)
+		}
+	}
 }

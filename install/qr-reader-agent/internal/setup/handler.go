@@ -144,10 +144,7 @@ func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
 
 	cfg := appconfig.DefaultRuntimeConfig()
 	cfg.Configured = true
-	cfg.IdentityURL = strings.TrimRight(strings.TrimSpace(claimed.IdentityURL), "/")
-	if cfg.IdentityURL == "" {
-		cfg.IdentityURL = identityURL
-	}
+	cfg.IdentityURL = PreferReachableIdentityURL(identityURL, claimed.IdentityURL)
 	cfg.DeviceKey = strings.TrimSpace(claimed.DeviceKey)
 	cfg.DeviceID = strings.TrimSpace(claimed.DeviceID)
 	cfg.ProvisionedAt = time.Now().UTC().Format(time.RFC3339)

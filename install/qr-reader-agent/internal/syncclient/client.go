@@ -22,6 +22,7 @@ type ClientConfig struct {
 	IdentityURL   string
 	DeviceKey     string
 	EmitDetection bool
+	RelayEnabled  bool
 }
 
 type HTTPDoer interface {

@@ -76,6 +76,9 @@ fi
 if getent group gpio >/dev/null 2>&1; then
   usermod -aG gpio "$SERVICE_USER" || true
 fi
+if getent group input >/dev/null 2>&1; then
+  usermod -aG input "$SERVICE_USER" || true
+fi
 
 install -d -m 0755 "$BIN_DIR" "$LIB_DIR"
 install -d -m 0750 -o "$SERVICE_USER" -g "$SERVICE_USER" "$ETC_DIR"

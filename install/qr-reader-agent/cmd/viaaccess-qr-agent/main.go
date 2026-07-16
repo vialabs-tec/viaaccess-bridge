@@ -16,6 +16,7 @@ import (
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/agent"
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/hidwedge"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/redeem"
@@ -38,7 +39,9 @@ func main() {
 	policyPath := flag.String("policy", envOr("VIAACCESS_QR_POLICY", defaultPolicyPath), "path to policy snapshot JSON")
 	outboxPath := flag.String("outbox", envOr("VIAACCESS_QR_OUTBOX", defaultOutboxPath), "path to outbox state JSON")
 	noncePath := flag.String("nonce", envOr("VIAACCESS_QR_NONCE", defaultNoncePath), "path to consumed intent nonce store")
-	stdinMode := flag.Bool("stdin", envBool("STDIN_SCANNER"), "read QR URLs from stdin (USB keyboard wedge)")
+	stdinMode := flag.Bool("stdin", envBool("STDIN_SCANNER"), "read QR URLs from process stdin (dev / pipe)")
+	hidDevice := flag.String("hid-device", strings.TrimSpace(os.Getenv("HID_SCANNER_DEVICE")), "evdev path for USB keyboard-wedge scanner")
+	hidAuto := flag.Bool("hid-auto", envBool("HID_SCANNER_AUTO"), "auto-detect USB keyboard wedge via /dev/input/by-id")
 	setupPIN := flag.String("setup-pin", os.Getenv("SETUP_PIN"), "PIN required for /setup (empty = open on LAN)")
 	flag.Parse()
 
@@ -127,14 +130,27 @@ func main() {
 		if err := cfg.ValidateOperational(); err != nil {
 			log.Printf("warning: %v", err)
 		}
+		scanSink := newScanSink(app, policyHolder, outboxStore, nonceStore, relayService, state)
 		if *stdinMode {
-			go runStdinScanner(ctx, app, policyHolder, outboxStore, nonceStore, relayService, state)
+			go runStdinScanner(ctx, scanSink)
+		}
+		hidPath := strings.TrimSpace(*hidDevice)
+		if hidPath == "" && *hidAuto {
+			if p, err := hidwedge.DiscoverKeyboardDevice(); err != nil {
+				log.Printf("hid-auto: %v", err)
+			} else {
+				hidPath = p
+			}
+		}
+		if hidPath != "" {
+			go runHIDScanner(ctx, hidPath, scanSink)
 		}
 		log.Printf(
-			"viaaccess-qr-agent listening on http://%s (mode=%s stdin=%v)",
+			"viaaccess-qr-agent listening on http://%s (mode=%s stdin=%v hid=%q)",
 			addr,
 			state.OperationMode(),
 			*stdinMode,
+			hidPath,
 		)
 	} else {
 		log.Printf("viaaccess-qr-agent setup mode on http://%s/setup", addr)
@@ -150,18 +166,74 @@ type configSource interface {
 	Config() appconfig.RuntimeConfig
 }
 
-func runStdinScanner(
-	ctx context.Context,
+type scanSink struct {
+	cfgSource    configSource
+	policyHolder *policy.Holder
+	outboxStore  *outbox.Store
+	nonceStore   *contingency.NonceStore
+	relayService *relay.Service
+	state        *agent.State
+	debounce     *scan.Debounce
+}
+
+func newScanSink(
 	cfgSource configSource,
 	policyHolder *policy.Holder,
 	outboxStore *outbox.Store,
 	nonceStore *contingency.NonceStore,
 	relayService *relay.Service,
 	state *agent.State,
-) {
-	debounce := &scan.Debounce{}
+) *scanSink {
+	return &scanSink{
+		cfgSource:    cfgSource,
+		policyHolder: policyHolder,
+		outboxStore:  outboxStore,
+		nonceStore:   nonceStore,
+		relayService: relayService,
+		state:        state,
+		debounce:     &scan.Debounce{},
+	}
+}
 
-	log.Println("stdin scanner active — scan QR from USB wedge")
+func (s *scanSink) handleLine(ctx context.Context, line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	cfg := s.cfgSource.Config()
+	if !cfg.Configured {
+		log.Println("scan ignored — appliance in setup mode")
+		return
+	}
+	redeemClient := redeem.NewClient(redeem.ClientConfig{
+		IdentityURL:   cfg.IdentityURL,
+		DeviceKey:     cfg.DeviceKey,
+		EmitDetection: cfg.EmitDetection,
+	}, nil)
+	var unlockClient scan.UnlockPoster
+	if cfg.UnlockWebhookURL != "" {
+		unlockClient = unlock.NewClient(cfg.UnlockWebhookURL, nil)
+	}
+	handler := &scan.Handler{
+		Config:        cfg,
+		Redeem:        redeemClient,
+		Unlock:        unlockClient,
+		Relay:         s.relayService,
+		Debounce:      s.debounce,
+		Policy:        s.policyHolder.Get,
+		OperationMode: s.state.OperationMode,
+		Outbox:        s.outboxStore,
+		Nonce:         s.nonceStore,
+		OnScanComplete: func(path agent.ScanPath, qrURL string, result redeem.Result) {
+			s.state.RecordScan(path, result)
+			log.Printf("[%s] %s", path, redeem.FormatLog(result))
+		},
+	}
+	_, _ = handler.HandleScan(ctx, line, "")
+}
+
+func runStdinScanner(ctx context.Context, sink *scanSink) {
+	log.Println("stdin scanner active — pipe QR URLs (dev)")
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		select {
@@ -169,47 +241,34 @@ func runStdinScanner(
 			return
 		default:
 		}
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-
-		cfg := cfgSource.Config()
-		if !cfg.Configured {
-			log.Println("stdin scan ignored — appliance in setup mode")
-			continue
-		}
-
-		redeemClient := redeem.NewClient(redeem.ClientConfig{
-			IdentityURL:   cfg.IdentityURL,
-			DeviceKey:     cfg.DeviceKey,
-			EmitDetection: cfg.EmitDetection,
-		}, nil)
-		var unlockClient scan.UnlockPoster
-		if cfg.UnlockWebhookURL != "" {
-			unlockClient = unlock.NewClient(cfg.UnlockWebhookURL, nil)
-		}
-		handler := &scan.Handler{
-			Config:        cfg,
-			Redeem:        redeemClient,
-			Unlock:        unlockClient,
-			Relay:         relayService,
-			Debounce:      debounce,
-			Policy:        policyHolder.Get,
-			OperationMode: state.OperationMode,
-			Outbox:        outboxStore,
-			Nonce:         nonceStore,
-			OnScanComplete: func(path agent.ScanPath, qrURL string, result redeem.Result) {
-				state.RecordScan(path, result)
-				log.Printf("[%s] %s", path, redeem.FormatLog(result))
-			},
-		}
-
-		_, _ = handler.HandleScan(ctx, line, "")
+		sink.handleLine(ctx, scanner.Text())
 	}
 	if err := scanner.Err(); err != nil {
 		log.Printf("stdin scanner error: %v", err)
 	}
+}
+
+func runHIDScanner(ctx context.Context, devicePath string, sink *scanSink) {
+	reader, err := hidwedge.Open(devicePath)
+	if err != nil {
+		log.Printf("hid scanner: %v", err)
+		return
+	}
+	defer reader.Close()
+	log.Printf("hid scanner active on %s (EVIOCGRAB)", reader.Path())
+	if err := reader.Run(ctx, func(line string) {
+		log.Printf("hid scan: %s", truncateForLog(line, 96))
+		sink.handleLine(ctx, line)
+	}); err != nil && ctx.Err() == nil {
+		log.Printf("hid scanner stopped: %v", err)
+	}
+}
+
+func truncateForLog(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }
 
 func envOr(key, fallback string) string {
