@@ -3,19 +3,21 @@
 BINARY=viaaccess-qr-agent
 PKG=./cmd/viaaccess-qr-agent
 DEV_DIR=.dev
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS=-ldflags "-X github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/buildinfo.Version=$(VERSION)"
 
 build:
-	go build -o bin/$(BINARY) $(PKG)
+	go build $(LDFLAGS) -o bin/$(BINARY) $(PKG)
 
 arm64:
-	GOOS=linux GOARCH=arm64 go build -o bin/$(BINARY)-linux-arm64 $(PKG)
+	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o bin/$(BINARY)-linux-arm64 $(PKG)
 
 test:
 	go test ./...
 
 run:
 	@mkdir -p $(DEV_DIR)
-	go run $(PKG) \
+	go run $(LDFLAGS) $(PKG) \
 		--config ./config.dev.json \
 		--policy ./$(DEV_DIR)/policy-snapshot.json \
 		--outbox ./$(DEV_DIR)/outbox.json \
@@ -24,7 +26,7 @@ run:
 
 dev:
 	@mkdir -p $(DEV_DIR)
-	go run $(PKG) \
+	go run $(LDFLAGS) $(PKG) \
 		--config ./config.dev.json \
 		--policy ./$(DEV_DIR)/policy-snapshot.json \
 		--outbox ./$(DEV_DIR)/outbox.json \
@@ -42,9 +44,10 @@ reset-setup:
 # Cross-compile Pi binary + remind install path.
 setup-image: arm64
 	@chmod +x scripts/install.sh scripts/healthcheck.sh
-	@echo "Binary: bin/$(BINARY)-linux-arm64"
+	@echo "Binary: bin/$(BINARY)-linux-arm64 (version $(VERSION))"
 	@echo "On the Pi: sudo ./scripts/install.sh --binary bin/$(BINARY)-linux-arm64"
 	@echo "Optional LEDs: add --enable-status-led"
+	@echo "SHA256: $$(shasum -a 256 bin/$(BINARY)-linux-arm64 | awk '{print $$1}')"
 
 # Alias used by docs / day-1 Pi drop.
 release: setup-image

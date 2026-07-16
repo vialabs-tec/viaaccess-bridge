@@ -156,7 +156,7 @@ A cada **~60 segundos** (e uma vez ao entrar em modo ONLINE), o loop de sync exe
 |-------|-------------------|---------------------|
 | 1. Policy | `GET /api/bridge/policy-snapshot` | Atualiza grants, `ticketVerify` e `edgePolicy` (regras ViaAccess para contingência) em `policy-snapshot.json` |
 | 2. Device config | `GET /api/bridge/device-config` | Ajusta parâmetros operacionais em `config.json` (ver abaixo) |
-| 2b. Remote commands | `GET /api/bridge/commands` (+ ack) | `UNLOCK` do admin; poll adaptativo via `pollAfterMs` (~10s idle / ~2s após unlock) |
+| 2b. Remote commands | `GET /api/bridge/commands` (+ ack) | `UNLOCK` / `UPDATE` (OTA); poll adaptativo via `pollAfterMs` (~10s idle / ~2s após enqueue) |
 | 3. Outbox | `POST /api/bridge/contingency/flush` | Reenvia passagens gravadas offline, se houver |
 
 ```
@@ -381,10 +381,34 @@ sudo ./scripts/install.sh --binary bin/viaaccess-qr-agent-linux-arm64 --enable-s
 
 O script:
 
-1. Instala o binário em `/usr/local/bin/viaaccess-qr-agent`
-2. Cria usuário `viaaccess`, dirs em `/etc/viaaccess-qr-reader/`
-3. Habilita `viaaccess-qr-agent.service` + `viaaccess-qr-agent-health.service` (health no boot)
-4. Sobe o serviço (`http://<ip>:3710/setup` se ainda não provisionado)
+1. Instala o binário em `/var/lib/viaaccess-qr-reader/bin/viaaccess-qr-agent` (dono `viaaccess`, necessário para OTA)
+2. Symlink em `/usr/local/bin/viaaccess-qr-agent`
+3. Cria usuário `viaaccess`, dirs em `/etc/viaaccess-qr-reader/`
+4. Habilita `viaaccess-qr-agent.service` + `viaaccess-qr-agent-health.service` (health no boot)
+5. Sobe o serviço (`http://<ip>:3710/setup` se ainda não provisionado)
+
+### Fleet OTA
+
+Com Identity configurado (`BRIDGE_OTA_VERSION`, `BRIDGE_OTA_DOWNLOAD_URL`, `BRIDGE_OTA_SHA256`), o admin enfileira **Atualizar software** no painel. O agent:
+
+1. Faz poll de `UPDATE` com `{ version, url, sha256 }`
+2. Baixa o binário (HTTPS), verifica SHA-256, troca o arquivo sob `/var/lib/…` e faz ack
+3. Sai com código 0; systemd `Restart=always` sobe a nova versão
+
+Rede do cliente: saída HTTPS para o Identity **e** para o host do artifact (CDN/GitHub Releases). Sem VPN/SSH.
+
+Publique um release e configure o Identity:
+
+```bash
+make VERSION=1.4.0 release
+shasum -a 256 bin/viaaccess-qr-agent-linux-arm64
+# suba o binário; no Identity:
+# BRIDGE_OTA_VERSION=1.4.0
+# BRIDGE_OTA_DOWNLOAD_URL=https://…/viaaccess-qr-agent-linux-arm64
+# BRIDGE_OTA_SHA256=<hex>
+```
+
+Readers já instalados com binário só em `/usr/local/bin` precisam de um `install.sh` desta versão (uma vez) para migrar o path gravável.
 
 Healthcheck no boot: `scripts/healthcheck.sh` (JSON `/health` com `configured` + `operationMode`).
 

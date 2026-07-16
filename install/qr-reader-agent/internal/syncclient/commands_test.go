@@ -15,6 +15,9 @@ func TestFetchCommandsAndAck(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer idb_test" {
 			t.Fatalf("auth = %q", r.Header.Get("Authorization"))
 		}
+		if r.Header.Get("X-ViaAccess-Agent-Version") != "1.0.0" {
+			t.Fatalf("agent version = %q", r.Header.Get("X-ViaAccess-Agent-Version"))
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"commands": []map[string]any{
 				{"id": "cmd1", "type": "UNLOCK", "expiresAt": "2026-07-16T12:00:00Z", "createdAt": "2026-07-16T11:59:00Z"},
@@ -29,7 +32,11 @@ func TestFetchCommandsAndAck(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	c := NewClient(ClientConfig{IdentityURL: srv.URL, DeviceKey: "idb_test"}, srv.Client())
+	c := NewClient(ClientConfig{
+		IdentityURL:  srv.URL,
+		DeviceKey:    "idb_test",
+		AgentVersion: "1.0.0",
+	}, srv.Client())
 	result, err := c.FetchCommands(context.Background())
 	if err != nil {
 		t.Fatal(err)

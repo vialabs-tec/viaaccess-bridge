@@ -28,3 +28,17 @@ func setRelayEnabledHeader(req *http.Request, enabled bool) {
 		req.Header.Set("X-ViaAccess-Relay-Enabled", "false")
 	}
 }
+
+func setAgentVersionHeader(req *http.Request, version string) {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return
+	}
+	req.Header.Set("X-ViaAccess-Agent-Version", version)
+}
+
+func (c *Client) setBridgeHeaders(req *http.Request) {
+	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
+	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
+	setAgentVersionHeader(req, c.cfg.AgentVersion)
+}

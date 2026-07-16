@@ -5,13 +5,17 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/agent"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/buildinfo"
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/ota"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/redeem"
@@ -222,6 +226,7 @@ func (a *App) runSyncLoop(ctx context.Context) {
 		DeviceKey:     cfg.DeviceKey,
 		EmitDetection: cfg.EmitDetection,
 		RelayEnabled:  cfg.Relay.Enabled,
+		AgentVersion:  buildinfo.Version,
 	}, nil)
 
 	ticker := time.NewTicker(60 * time.Second)
@@ -234,6 +239,7 @@ func (a *App) runSyncLoop(ctx context.Context) {
 			DeviceKey:     current.DeviceKey,
 			EmitDetection: current.EmitDetection,
 			RelayEnabled:  current.Relay.Enabled,
+			AgentVersion:  buildinfo.Version,
 		}, nil)
 
 		syncCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -371,6 +377,7 @@ func (a *App) pollCommandsOnce(ctx context.Context, idle, fast time.Duration) ti
 		DeviceKey:     cfg.DeviceKey,
 		EmitDetection: cfg.EmitDetection,
 		RelayEnabled:  cfg.Relay.Enabled,
+		AgentVersion:  buildinfo.Version,
 	}, nil)
 
 	pollCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
@@ -429,10 +436,63 @@ func (a *App) executeRemoteCommand(ctx context.Context, client *syncclient.Clien
 		if err := client.AckCommand(ackCtx, cmd.ID, true, ""); err != nil {
 			log.Printf("ack failed: %v", err)
 		}
+	case "UPDATE":
+		a.executeOtaUpdate(ctx, client, cmd)
 	default:
 		log.Printf("remote command %s unknown type %q", cmd.ID, cmd.Type)
 		if err := client.AckCommand(ackCtx, cmd.ID, false, "unsupported command type"); err != nil {
 			log.Printf("ack failed: %v", err)
 		}
 	}
+}
+
+func (a *App) executeOtaUpdate(ctx context.Context, client *syncclient.Client, cmd syncclient.PendingCommand) {
+	ackCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	if cmd.Payload == nil {
+		log.Printf("remote UPDATE %s missing payload", cmd.ID)
+		_ = client.AckCommand(ackCtx, cmd.ID, false, "missing OTA payload")
+		return
+	}
+
+	target := strings.TrimSpace(cmd.Payload.Version)
+	if target != "" && target == buildinfo.Version {
+		log.Printf("remote UPDATE %s skipped — already on %s", cmd.ID, buildinfo.Version)
+		_ = client.AckCommand(ackCtx, cmd.ID, true, "")
+		return
+	}
+
+	dest, err := os.Executable()
+	if err != nil {
+		log.Printf("remote UPDATE %s: resolve executable: %v", cmd.ID, err)
+		_ = client.AckCommand(ackCtx, cmd.ID, false, "cannot resolve agent binary path")
+		return
+	}
+	if resolved, err := filepath.EvalSymlinks(dest); err == nil {
+		dest = resolved
+	}
+
+	otaCtx, otaCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer otaCancel()
+
+	err = ota.Apply(otaCtx, ota.Payload{
+		Version: cmd.Payload.Version,
+		URL:     cmd.Payload.URL,
+		Sha256:  cmd.Payload.Sha256,
+	}, dest, nil)
+	if err != nil {
+		log.Printf("remote UPDATE %s failed: %v", cmd.ID, err)
+		_ = client.AckCommand(ackCtx, cmd.ID, false, err.Error())
+		return
+	}
+
+	log.Printf("remote UPDATE %s installed version=%s — restarting", cmd.ID, target)
+	if err := client.AckCommand(ackCtx, cmd.ID, true, ""); err != nil {
+		log.Printf("ack failed after OTA install: %v", err)
+	}
+
+	// Give the ack a moment to flush, then exit for systemd Restart=always.
+	time.Sleep(300 * time.Millisecond)
+	os.Exit(0)
 }

@@ -9,8 +9,9 @@ User=viaaccess
 Group=viaaccess
 SupplementaryGroups=input gpio
 EnvironmentFile=-/etc/viaaccess-qr-reader/env
+# Binary lives under /var/lib so the service user can apply OTA updates.
 # --hid-auto: USB keyboard-wedge via evdev (stdin alone does not receive HID under systemd)
-ExecStart=/usr/local/bin/viaaccess-qr-agent --config /etc/viaaccess-qr-reader/config.json --hid-auto
+ExecStart=/var/lib/viaaccess-qr-reader/bin/viaaccess-qr-agent --config /etc/viaaccess-qr-reader/config.json --hid-auto
 Restart=always
 RestartSec=3
 NoNewPrivileges=true

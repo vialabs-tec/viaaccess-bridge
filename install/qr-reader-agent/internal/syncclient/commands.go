@@ -10,13 +10,21 @@ import (
 	"strings"
 )
 
+// OtaPayload is the UPDATE command artifact descriptor from Identity.
+type OtaPayload struct {
+	Version string `json:"version"`
+	URL     string `json:"url"`
+	Sha256  string `json:"sha256"`
+}
+
 // PendingCommand is a remote command from Identity for this appliance.
 type PendingCommand struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	Reason    string `json:"reason"`
-	ExpiresAt string `json:"expiresAt"`
-	CreatedAt string `json:"createdAt"`
+	ID        string      `json:"id"`
+	Type      string      `json:"type"`
+	Reason    string      `json:"reason"`
+	Payload   *OtaPayload `json:"payload"`
+	ExpiresAt string      `json:"expiresAt"`
+	CreatedAt string      `json:"createdAt"`
 }
 
 // CommandsResult is the Identity command poll payload (includes backoff hint).
@@ -40,8 +48,7 @@ func (c *Client) FetchCommands(ctx context.Context) (CommandsResult, error) {
 	if err != nil {
 		return CommandsResult{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
-	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
+	c.setBridgeHeaders(req)
 
 	res, err := c.client.Do(req)
 	if err != nil {
@@ -85,7 +92,7 @@ func (c *Client) AckCommand(ctx context.Context, commandID string, ok bool, errM
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
+	c.setBridgeHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	res, err := c.client.Do(req)

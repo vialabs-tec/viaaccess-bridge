@@ -11,7 +11,10 @@ ENABLE_STATUS_LED=0
 PREFIX="${PREFIX:-/usr/local}"
 ETC_DIR="${ETC_DIR:-/etc/viaaccess-qr-reader}"
 LIB_DIR="${PREFIX}/lib/viaaccess-qr-reader"
-BIN_DIR="${PREFIX}/bin"
+# Writable by service user so fleet OTA can replace the binary without root.
+VAR_DIR="${VAR_DIR:-/var/lib/viaaccess-qr-reader}"
+BIN_DIR="${VAR_DIR}/bin"
+LEGACY_BIN="${PREFIX}/bin/viaaccess-qr-agent"
 SERVICE_USER="${SERVICE_USER:-viaaccess}"
 
 while [[ $# -gt 0 ]]; do
@@ -80,12 +83,19 @@ if getent group input >/dev/null 2>&1; then
   usermod -aG input "$SERVICE_USER" || true
 fi
 
-install -d -m 0755 "$BIN_DIR" "$LIB_DIR"
+install -d -m 0755 "$LIB_DIR" "${PREFIX}/bin"
+install -d -m 0755 -o "$SERVICE_USER" -g "$SERVICE_USER" "$VAR_DIR" "$BIN_DIR"
 install -d -m 0750 -o "$SERVICE_USER" -g "$SERVICE_USER" "$ETC_DIR"
-install -m 0755 "$BINARY" "${BIN_DIR}/viaaccess-qr-agent"
+install -m 0755 -o "$SERVICE_USER" -g "$SERVICE_USER" "$BINARY" "${BIN_DIR}/viaaccess-qr-agent"
 install -m 0755 "${ROOT}/scripts/healthcheck.sh" "${LIB_DIR}/healthcheck.sh"
 install -m 0644 "${ROOT}/systemd/viaaccess-qr-agent.service" /etc/systemd/system/viaaccess-qr-agent.service
 install -m 0644 "${ROOT}/systemd/viaaccess-qr-agent-health.service" /etc/systemd/system/viaaccess-qr-agent-health.service
+
+# Convenience symlink for PATH; real binary is under VAR_DIR for OTA.
+if [[ -e "$LEGACY_BIN" && ! -L "$LEGACY_BIN" ]]; then
+  rm -f "$LEGACY_BIN"
+fi
+ln -sfn "${BIN_DIR}/viaaccess-qr-agent" "$LEGACY_BIN"
 
 if [[ ! -f "${ETC_DIR}/env" ]]; then
   install -m 0640 -o "$SERVICE_USER" -g "$SERVICE_USER" \
@@ -116,6 +126,6 @@ if [[ "$NO_START" -eq 0 ]]; then
   }
 fi
 
-echo "installed ${BIN_DIR}/viaaccess-qr-agent"
+echo "installed ${BIN_DIR}/viaaccess-qr-agent (symlink ${LEGACY_BIN})"
 echo "config ${ETC_DIR}/ (open http://<ip>:3710/setup if not provisioned)"
 echo "status: systemctl status viaaccess-qr-agent viaaccess-qr-agent-health"

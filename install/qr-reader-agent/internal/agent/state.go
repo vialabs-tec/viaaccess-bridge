@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/buildinfo"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
@@ -149,6 +150,7 @@ func (s *State) Snapshot() map[string]any {
 	out := map[string]any{
 		"ok":                HealthOK(mode),
 		"configured":        s.configured,
+		"agentVersion":      buildinfo.Version,
 		"operationMode":     mode,
 		"operationModeLabel": ModeLabelPT(mode),
 		"identityReachable": s.identityReachable,

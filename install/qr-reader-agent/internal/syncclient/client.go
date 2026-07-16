@@ -23,6 +23,7 @@ type ClientConfig struct {
 	DeviceKey     string
 	EmitDetection bool
 	RelayEnabled  bool
+	AgentVersion  string
 }
 
 type HTTPDoer interface {
@@ -52,6 +53,8 @@ func (c *Client) FetchPolicy(ctx context.Context) (policy.Snapshot, error) {
 		return policy.Snapshot{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
+	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
+	setAgentVersionHeader(req, c.cfg.AgentVersion)
 
 	res, err := c.client.Do(req)
 	if err != nil {
@@ -114,7 +117,7 @@ func (c *Client) FlushOutbox(ctx context.Context, events []outbox.Event) (FlushR
 	if err != nil {
 		return FlushResponse{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
+	c.setBridgeHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	res, err := c.client.Do(req)
