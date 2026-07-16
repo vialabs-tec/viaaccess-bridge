@@ -75,6 +75,20 @@
             <input name="relayPulseMs" type="number" value="3000" min="100" />
           </label>
         </fieldset>
+        <fieldset>
+          <legend>Sensor de porta (MC38)</legend>
+          <label class="check">
+            <input name="doorContactEnabled" type="checkbox" />
+            <span>Monitorar reed switch (abertura forçada / held)</span>
+          </label>
+          <label>GPIO pin
+            <input name="doorContactGpioPin" type="number" value="5" min="1" />
+          </label>
+          <label class="check">
+            <input name="doorContactSimulated" type="checkbox" />
+            <span>Simular (sem hardware, para homologação)</span>
+          </label>
+        </fieldset>
         <button type="submit">Provisionar e testar</button>
         <div id="provision-msg" class="msg"></div>
       </form>
@@ -107,6 +121,20 @@
             <input name="relayPulseMs" type="number" value="3000" min="100" />
           </label>
         </fieldset>
+        <fieldset>
+          <legend>Sensor de porta (MC38)</legend>
+          <label class="check">
+            <input name="doorContactEnabled" type="checkbox" />
+            <span>Monitorar reed switch (abertura forçada / held)</span>
+          </label>
+          <label>GPIO pin
+            <input name="doorContactGpioPin" type="number" value="5" min="1" />
+          </label>
+          <label class="check">
+            <input name="doorContactSimulated" type="checkbox" />
+            <span>Simular (sem hardware, para homologação)</span>
+          </label>
+        </fieldset>
         <label class="check">
           <input name="emitDetection" type="checkbox" checked />
           <span>Emitir detection no ViaAccess (recomendado sem câmera na porta)</span>
@@ -134,6 +162,14 @@
       };
     }
 
+    function doorContactPayload(fd) {
+      return {
+        doorContactEnabled: fd.get('doorContactEnabled') === 'on',
+        doorContactGpioPin: Number(fd.get('doorContactGpioPin') || 5),
+        doorContactSimulated: fd.get('doorContactSimulated') === 'on',
+      };
+    }
+
     const provisionForm = document.getElementById('provision-form');
     const provisionMsg = document.getElementById('provision-msg');
     provisionForm.addEventListener('submit', async (e) => {
@@ -146,6 +182,7 @@
         claimInput: fd.get('claimInput'),
         identityUrl: fd.get('identityUrl') || '',
         ...relayPayload(fd),
+        ...doorContactPayload(fd),
       };
       const btn = provisionForm.querySelector('button[type="submit"]');
       btn.disabled = true;
@@ -185,6 +222,7 @@
         accessPointSlug: fd.get('accessPointSlug') || '',
         emitDetection: fd.get('emitDetection') === 'on',
         ...relayPayload(fd),
+        ...doorContactPayload(fd),
       };
       const btn = setupForm.querySelector('button[type="submit"]');
       btn.disabled = true;

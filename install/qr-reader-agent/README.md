@@ -359,9 +359,10 @@ Config JSON:
 }
 ```
 
-Env: `DOOR_CONTACT_ENABLED=true`, `DOOR_CONTACT_GPIO_PIN`, `DOOR_CONTACT_SIMULATED=true`, etc.
+Env: `DOOR_CONTACT_*` ainda sobrescreve no boot (avançado). Preferência: marcar no
+`/setup` (como o relé) para gravar em `config.json` sem editar `.env`.
 
-Sem hardware (Mac / homologação), use `simulated: true` e force o estado:
+Homologação sem hardware: marque **Simular** no setup, ou `simulated: true` / `POST /api/door-contact/sim`.
 
 ```bash
 curl -s -X POST http://127.0.0.1:3710/api/door-contact/sim -d '{"state":"open"}'

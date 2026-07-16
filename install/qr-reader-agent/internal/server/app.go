@@ -120,6 +120,12 @@ func (a *App) SaveConfig(cfg appconfig.RuntimeConfig) error {
 		return err
 	}
 	a.cfg = cfg
+	if a.doorContact != nil {
+		if err := a.doorContact.ApplyConfig(cfg.DoorContact); err != nil {
+			log.Printf("doorcontact apply: %v", err)
+		}
+		a.state.SetDoorContactSnapshot(a.doorContact.Snapshot)
+	}
 	if cfg.Configured {
 		a.state.SetConfigured(true)
 		a.rebuildHandlerLocked()

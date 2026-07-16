@@ -13,14 +13,17 @@ import (
 )
 
 type SaveRequest struct {
-	PIN             string `json:"pin"`
-	IdentityURL     string `json:"identityUrl"`
-	DeviceKey       string `json:"deviceKey"`
-	AccessPointSlug string `json:"accessPointSlug"`
-	EmitDetection   *bool  `json:"emitDetection"`
-	RelayEnabled    *bool  `json:"relayEnabled"`
-	RelayGPIOPin    *int   `json:"relayGpioPin"`
-	RelayPulseMs    *int   `json:"relayPulseMs"`
+	PIN                  string `json:"pin"`
+	IdentityURL          string `json:"identityUrl"`
+	DeviceKey            string `json:"deviceKey"`
+	AccessPointSlug      string `json:"accessPointSlug"`
+	EmitDetection        *bool  `json:"emitDetection"`
+	RelayEnabled         *bool  `json:"relayEnabled"`
+	RelayGPIOPin         *int   `json:"relayGpioPin"`
+	RelayPulseMs         *int   `json:"relayPulseMs"`
+	DoorContactEnabled   *bool  `json:"doorContactEnabled"`
+	DoorContactGPIOPin   *int   `json:"doorContactGpioPin"`
+	DoorContactSimulated *bool  `json:"doorContactSimulated"`
 }
 
 type Handler struct {
@@ -83,8 +86,9 @@ func (h *Handler) HandleSave(w http.ResponseWriter, r *http.Request) {
 	if req.RelayPulseMs != nil && *req.RelayPulseMs > 0 {
 		cfg.Relay.PulseMs = *req.RelayPulseMs
 	}
+	doorFromRequest := applyDoorContactFromRequest(&cfg, req.DoorContactEnabled, req.DoorContactGPIOPin, req.DoorContactSimulated)
 	cfg.SetupPIN = strings.TrimSpace(h.PIN)
-	cfg = preserveLocalHardware(cfg, h.ConfigPath)
+	cfg = preserveLocalHardware(cfg, h.ConfigPath, doorFromRequest)
 	cfg = cfg.Normalize()
 
 	if err := cfg.ValidateOperational(); err != nil {
@@ -165,8 +169,9 @@ func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
 	if req.RelayPulseMs != nil && *req.RelayPulseMs > 0 {
 		cfg.Relay.PulseMs = *req.RelayPulseMs
 	}
+	doorFromRequest := applyDoorContactFromRequest(&cfg, req.DoorContactEnabled, req.DoorContactGPIOPin, req.DoorContactSimulated)
 	cfg.SetupPIN = strings.TrimSpace(h.PIN)
-	cfg = preserveLocalHardware(cfg, h.ConfigPath)
+	cfg = preserveLocalHardware(cfg, h.ConfigPath, doorFromRequest)
 	cfg = cfg.Normalize()
 
 	if err := cfg.ValidateOperational(); err != nil {
@@ -196,16 +201,39 @@ func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// preserveLocalHardware keeps appliance-only settings (door contact, status LED)
-// across setup save / QR provision, which otherwise start from defaults.
-func preserveLocalHardware(cfg appconfig.RuntimeConfig, configPath string) appconfig.RuntimeConfig {
+// preserveLocalHardware keeps Status LED (and door contact when the setup form
+// did not send door fields) across setup save / QR provision.
+func preserveLocalHardware(cfg appconfig.RuntimeConfig, configPath string, doorFromRequest bool) appconfig.RuntimeConfig {
 	existing, err := appconfig.LoadFromFile(configPath)
 	if err != nil {
 		return cfg
 	}
-	cfg.DoorContact = existing.DoorContact
 	cfg.StatusLED = existing.StatusLED
+	if !doorFromRequest {
+		cfg.DoorContact = existing.DoorContact
+	}
 	return cfg
+}
+
+func applyDoorContactFromRequest(
+	cfg *appconfig.RuntimeConfig,
+	enabled *bool,
+	gpioPin *int,
+	simulated *bool,
+) bool {
+	if enabled == nil && gpioPin == nil && simulated == nil {
+		return false
+	}
+	if enabled != nil {
+		cfg.DoorContact.Enabled = *enabled
+	}
+	if gpioPin != nil && *gpioPin > 0 {
+		cfg.DoorContact.GPIOPin = *gpioPin
+	}
+	if simulated != nil {
+		cfg.DoorContact.Simulated = *simulated
+	}
+	return true
 }
 
 func writeJSON(w http.ResponseWriter, status int, body map[string]any) {

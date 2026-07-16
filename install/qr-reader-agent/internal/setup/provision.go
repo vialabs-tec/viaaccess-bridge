@@ -15,12 +15,15 @@ import (
 const claimTokenPrefix = "clm_"
 
 type ProvisionRequest struct {
-	PIN          string `json:"pin"`
-	ClaimInput   string `json:"claimInput"`
-	IdentityURL  string `json:"identityUrl,omitempty"`
-	RelayEnabled *bool  `json:"relayEnabled"`
-	RelayGPIOPin *int   `json:"relayGpioPin"`
-	RelayPulseMs *int   `json:"relayPulseMs"`
+	PIN                  string `json:"pin"`
+	ClaimInput           string `json:"claimInput"`
+	IdentityURL          string `json:"identityUrl,omitempty"`
+	RelayEnabled         *bool  `json:"relayEnabled"`
+	RelayGPIOPin         *int   `json:"relayGpioPin"`
+	RelayPulseMs         *int   `json:"relayPulseMs"`
+	DoorContactEnabled   *bool  `json:"doorContactEnabled"`
+	DoorContactGPIOPin   *int   `json:"doorContactGpioPin"`
+	DoorContactSimulated *bool  `json:"doorContactSimulated"`
 }
 
 type claimAPIResponse struct {

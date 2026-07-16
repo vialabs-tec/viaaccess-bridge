@@ -27,15 +27,41 @@ type Service struct {
 }
 
 func NewService(cfg appconfig.DoorContactConfig, onEvent EventHandler) (*Service, error) {
-	cfg = normalizeDoorContact(cfg)
 	s := &Service{
-		cfg:     cfg,
 		onEvent: onEvent,
 		now:     time.Now,
 		stable:  StateUnknown,
 	}
+	if err := s.ApplyConfig(cfg); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// ApplyConfig hot-reloads door contact settings (e.g. after /setup provision).
+// Caller should restart Run() via the app background workers.
+func (s *Service) ApplyConfig(cfg appconfig.DoorContactConfig) error {
+	if s == nil {
+		return nil
+	}
+	cfg = normalizeDoorContact(cfg)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.stopHeldLocked()
+	if s.reader != nil {
+		_ = s.reader.Close()
+		s.reader = nil
+		s.sim = nil
+	}
+	s.cfg = cfg
+	s.simulated = false
+	s.stable = StateUnknown
+	s.pendingOpen = nil
+
 	if !cfg.Enabled {
-		return s, nil
+		return nil
 	}
 
 	if cfg.Simulated {
@@ -43,7 +69,7 @@ func NewService(cfg appconfig.DoorContactConfig, onEvent EventHandler) (*Service
 		s.reader = sim
 		s.sim = sim
 		s.simulated = true
-		return s, nil
+		return nil
 	}
 
 	gpio, err := NewGPIODriver(cfg.GPIOPin, cfg.ActiveLow)
@@ -53,11 +79,11 @@ func NewService(cfg appconfig.DoorContactConfig, onEvent EventHandler) (*Service
 		s.reader = sim
 		s.sim = sim
 		s.simulated = true
-		return s, nil
+		return nil
 	}
 	s.reader = gpio
 	s.simulated = false
-	return s, nil
+	return nil
 }
 
 func (s *Service) SetEventHandler(h EventHandler) {
