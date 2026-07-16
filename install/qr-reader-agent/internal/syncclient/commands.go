@@ -19,11 +19,18 @@ type PendingCommand struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-type commandsListResponse struct {
-	Commands []PendingCommand `json:"commands"`
+// CommandsResult is the Identity command poll payload (includes backoff hint).
+type CommandsResult struct {
+	Commands    []PendingCommand
+	PollAfterMs int
 }
 
-func (c *Client) FetchCommands(ctx context.Context) ([]PendingCommand, error) {
+type commandsListResponse struct {
+	Commands    []PendingCommand `json:"commands"`
+	PollAfterMs int              `json:"pollAfterMs"`
+}
+
+func (c *Client) FetchCommands(ctx context.Context) (CommandsResult, error) {
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
@@ -31,30 +38,33 @@ func (c *Client) FetchCommands(ctx context.Context) ([]PendingCommand, error) {
 		nil,
 	)
 	if err != nil {
-		return nil, err
+		return CommandsResult{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
 	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
 
 	res, err := c.client.Do(req)
 	if err != nil {
-		return nil, err
+		return CommandsResult{}, err
 	}
 	defer res.Body.Close()
 
 	raw, _ := io.ReadAll(res.Body)
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		if IsBridgeAuthFailure(res.StatusCode, raw) {
-			return nil, fmt.Errorf("%w: HTTP %d", ErrBridgeUnauthorized, res.StatusCode)
+			return CommandsResult{}, fmt.Errorf("%w: HTTP %d", ErrBridgeUnauthorized, res.StatusCode)
 		}
-		return nil, fmt.Errorf("commands HTTP %d: %s", res.StatusCode, strings.TrimSpace(string(raw)))
+		return CommandsResult{}, fmt.Errorf("commands HTTP %d: %s", res.StatusCode, strings.TrimSpace(string(raw)))
 	}
 
 	var parsed commandsListResponse
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("parse commands: %w", err)
+		return CommandsResult{}, fmt.Errorf("parse commands: %w", err)
 	}
-	return parsed.Commands, nil
+	return CommandsResult{
+		Commands:    parsed.Commands,
+		PollAfterMs: parsed.PollAfterMs,
+	}, nil
 }
 
 func (c *Client) AckCommand(ctx context.Context, commandID string, ok bool, errMsg string) error {

@@ -156,7 +156,7 @@ A cada **~60 segundos** (e uma vez ao entrar em modo ONLINE), o loop de sync exe
 |-------|-------------------|---------------------|
 | 1. Policy | `GET /api/bridge/policy-snapshot` | Atualiza grants, `ticketVerify` e `edgePolicy` (regras ViaAccess para contingência) em `policy-snapshot.json` |
 | 2. Device config | `GET /api/bridge/device-config` | Ajusta parâmetros operacionais em `config.json` (ver abaixo) |
-| 2b. Remote commands | `GET /api/bridge/commands` (+ ack) | `UNLOCK` do admin (abrir porta sem QR); poll ~2s |
+| 2b. Remote commands | `GET /api/bridge/commands` (+ ack) | `UNLOCK` do admin; poll adaptativo via `pollAfterMs` (~10s idle / ~2s após unlock) |
 | 3. Outbox | `POST /api/bridge/contingency/flush` | Reenvia passagens gravadas offline, se houver |
 
 ```

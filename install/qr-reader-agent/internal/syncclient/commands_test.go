@@ -19,6 +19,7 @@ func TestFetchCommandsAndAck(t *testing.T) {
 			"commands": []map[string]any{
 				{"id": "cmd1", "type": "UNLOCK", "expiresAt": "2026-07-16T12:00:00Z", "createdAt": "2026-07-16T11:59:00Z"},
 			},
+			"pollAfterMs": 2000,
 		})
 	})
 	mux.HandleFunc("POST /api/bridge/commands/cmd1/ack", func(w http.ResponseWriter, r *http.Request) {
@@ -29,12 +30,15 @@ func TestFetchCommandsAndAck(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(ClientConfig{IdentityURL: srv.URL, DeviceKey: "idb_test"}, srv.Client())
-	cmds, err := c.FetchCommands(context.Background())
+	result, err := c.FetchCommands(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cmds) != 1 || cmds[0].Type != "UNLOCK" {
-		t.Fatalf("cmds = %+v", cmds)
+	if len(result.Commands) != 1 || result.Commands[0].Type != "UNLOCK" {
+		t.Fatalf("result = %+v", result)
+	}
+	if result.PollAfterMs != 2000 {
+		t.Fatalf("PollAfterMs = %d", result.PollAfterMs)
 	}
 	if err := c.AckCommand(context.Background(), "cmd1", true, ""); err != nil {
 		t.Fatal(err)

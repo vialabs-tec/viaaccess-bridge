@@ -334,49 +334,74 @@ func (a *App) syncDeviceConfigLocked(client *syncclient.Client, ctx context.Cont
 }
 
 func (a *App) runCommandLoop(ctx context.Context) {
-	// Faster than policy sync so admin "Open door" feels near real-time.
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+	// Adaptive backoff for Vercel-hosted Identity (no long-poll):
+	// idle ~10s; after unlock activity Identity suggests ~2s via pollAfterMs.
+	const (
+		defaultIdle = 10 * time.Second
+		defaultFast = 2 * time.Second
+	)
 
-	pollOnce := func() {
-		cfg := a.Config()
-		if !cfg.Configured || strings.TrimSpace(cfg.DeviceKey) == "" {
-			return
-		}
-		client := syncclient.NewClient(syncclient.ClientConfig{
-			IdentityURL:   cfg.IdentityURL,
-			DeviceKey:     cfg.DeviceKey,
-			EmitDetection: cfg.EmitDetection,
-			RelayEnabled:  cfg.Relay.Enabled,
-		}, nil)
+	timer := time.NewTimer(0)
+	defer timer.Stop()
 
-		pollCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-		defer cancel()
-		cmds, err := client.FetchCommands(pollCtx)
-		if err != nil {
-			if errors.Is(err, syncclient.ErrBridgeUnauthorized) {
-				a.onBridgeUnauthorized("commands poll rejected device key")
-				return
-			}
-			log.Printf("commands poll failed: %v", err)
-			return
-		}
-		a.state.SetIdentityReachable(true)
-
-		for _, cmd := range cmds {
-			a.executeRemoteCommand(ctx, client, cmd)
-		}
-	}
-
-	pollOnce()
 	for {
 		select {
 		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
 			return
-		case <-ticker.C:
-			pollOnce()
+		case <-timer.C:
+			wait := a.pollCommandsOnce(ctx, defaultIdle, defaultFast)
+			timer.Reset(wait)
 		}
 	}
+}
+
+func (a *App) pollCommandsOnce(ctx context.Context, idle, fast time.Duration) time.Duration {
+	cfg := a.Config()
+	if !cfg.Configured || strings.TrimSpace(cfg.DeviceKey) == "" {
+		return idle
+	}
+	client := syncclient.NewClient(syncclient.ClientConfig{
+		IdentityURL:   cfg.IdentityURL,
+		DeviceKey:     cfg.DeviceKey,
+		EmitDetection: cfg.EmitDetection,
+		RelayEnabled:  cfg.Relay.Enabled,
+	}, nil)
+
+	pollCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	result, err := client.FetchCommands(pollCtx)
+	if err != nil {
+		if errors.Is(err, syncclient.ErrBridgeUnauthorized) {
+			a.onBridgeUnauthorized("commands poll rejected device key")
+			return idle
+		}
+		log.Printf("commands poll failed: %v", err)
+		return idle
+	}
+	a.state.SetIdentityReachable(true)
+
+	for _, cmd := range result.Commands {
+		a.executeRemoteCommand(ctx, client, cmd)
+	}
+
+	wait := time.Duration(result.PollAfterMs) * time.Millisecond
+	if wait < fast {
+		if len(result.Commands) > 0 {
+			wait = fast
+		} else {
+			wait = idle
+		}
+	}
+	if wait > 60*time.Second {
+		wait = 60 * time.Second
+	}
+	return wait
 }
 
 func (a *App) executeRemoteCommand(ctx context.Context, client *syncclient.Client, cmd syncclient.PendingCommand) {
