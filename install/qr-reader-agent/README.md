@@ -2,7 +2,7 @@
 
 Daemon de borda para o **appliance ViaAccess QR Reader**: lê QR dinâmico do Identity, faz `POST /api/bridge/intent/redeem`, opcionalmente aciona relé GPIO e webhook de unlock.
 
-O pacote TypeScript em [`../identity-qr-reader`](../identity-qr-reader) permanece como **referência de contrato** para homologação. Este agent é o runtime de produção no Raspberry Pi.
+Runtime de produção no Raspberry Pi (setup UI, policy sync, OTA, door contact, systemd).
 
 ```
 Celular (PWA) → QR → leitor USB/HTTP → viaaccess-qr-agent → Identity → ViaAccess
@@ -465,22 +465,23 @@ systemctl status viaaccess-qr-agent viaaccess-qr-agent-health
 journalctl -u viaaccess-qr-agent -u viaaccess-qr-agent-health -f
 ```
 
-## Paridade com identity-qr-reader (TypeScript)
+## Capacidades
 
-| Comportamento | TS reference | Go agent |
-|---------------|--------------|----------|
-| Redeem Identity | `redeem.ts` | `internal/redeem` |
-| Debounce + `/scan` | `turnstile-http.ts` | `internal/scan` |
-| Unlock webhook | `unlock-webhook.ts` | `internal/unlock` |
-| USB keyboard wedge | `scan-redeem.ts` (`--stdin`) | `--hid-auto` / `--hid-device` (evdev); `--stdin` for dev pipes |
-| Contingency verify | — | `internal/contingency` |
-| Policy sync + flush | — | `internal/syncclient` |
-| Device config sync | — | `internal/syncclient` (`GET /api/bridge/device-config`) |
-| Provisionamento QR | — | `internal/setup` (`POST /api/setup/provision`) |
-| Revogação → setup | — | `internal/server/app.go` (hot reload) |
-| Status LED | — | `internal/statusled` |
-| Door contact (MC38) | — | `internal/doorcontact` |
-| Install + health boot | — | `scripts/install.sh`, `*-health.service` |
+| Área | Pacote |
+|------|--------|
+| Redeem Identity | `internal/redeem` |
+| Debounce + `POST /scan` | `internal/scan` |
+| Unlock webhook / GPIO relay | `internal/unlock`, setup relay |
+| USB keyboard wedge | `--hid-auto` / `--hid-device` (evdev); `--stdin` for dev pipes |
+| Contingency verify | `internal/contingency` |
+| Policy sync + flush | `internal/syncclient` |
+| Device config sync | `internal/syncclient` (`GET /api/bridge/device-config`) |
+| Provisionamento QR | `internal/setup` (`POST /api/setup/provision`) |
+| Revogação → setup | `internal/server/app.go` (hot reload) |
+| Status LED | `internal/statusled` |
+| Door contact (MC38) | `internal/doorcontact` |
+| Fleet OTA | `scripts/install.sh`, Identity enqueue |
+| Install + health boot | `scripts/install.sh`, `*-health.service` |
 
 ## Ver também
 

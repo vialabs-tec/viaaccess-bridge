@@ -14,8 +14,7 @@ Pacote pronto com Frigate + MQTT + bridge: **[install/frigate/](install/frigate/
 
 Leitor USB ou HTTP (catraca) + QR dinâmico Identity (Phase 1b):
 
-- **Produção (appliance):** **[install/qr-reader-agent/](install/qr-reader-agent/README.md)** — agent Go (`viaaccess-qr-agent`), setup UI, GPIO, systemd
-- **Referência / homologação:** **[install/identity-qr-reader/](install/identity-qr-reader/README.md)** — script TypeScript (`npm start` ou `npm run start:http`)
+- **Appliance:** **[install/qr-reader-agent/](install/qr-reader-agent/README.md)** — agent Go (`viaaccess-qr-agent`), setup UI, GPIO, door contact, OTA, systemd
 
 Imagem Docker:
 
