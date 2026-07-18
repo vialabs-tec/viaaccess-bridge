@@ -25,7 +25,13 @@ CI: workflow `.github/workflows/qr-reader-agent.yml` executa `go test` e `go bui
 
 ## Primeiro boot (provisionamento)
 
-Sem `config.json` com `"configured": true`, o agent sobe em **modo setup** e expõe a UI em `http://<ip>:3710/setup`.
+Sem `config.json` com `"configured": true`, o agent sobe em **modo setup** e anuncia mDNS na LAN:
+
+```text
+http://viaaccess-qr.local:3710/setup
+```
+
+Se `.local` não resolver no celular/notebook, use `http://<ip>:3710/setup`. Vários appliances na mesma rede: defina `MDNS_HOSTNAME` distinto (ex. `viaaccess-qr-entrada`).
 
 Config padrão em produção: `/etc/viaaccess-qr-reader/config.json` (permissões `0600`).
 
@@ -57,7 +63,7 @@ Cada token `clm_…` é **uso único**: provisiona um appliance. Para outro leit
 **2. Appliance**
 
 1. Conecte o Pi/leitor na rede (mesma LAN do técnico).
-2. Abra `http://<ip-do-appliance>:3710/setup`.
+2. Abra `http://viaaccess-qr.local:3710/setup` (mesma rede Wi‑Fi/LAN; fallback: `http://<ip>:3710/setup`).
 3. Aba **Provisionar (QR)**.
 4. Cole a **URL completa** ou só o token `clm_…`.
    - Se colar só `clm_…`, informe também a URL do Identity.
@@ -266,6 +272,8 @@ Variáveis em `/etc/viaaccess-qr-reader/env` (opcional, sobrescrevem JSON):
 | `UNLOCK_ON_AUTHORIZED_ONLY` | `true` (padrão) |
 | `RELAY_ENABLED` | `true` para GPIO |
 | `RELAY_GPIO_PIN` | Padrão `17` |
+| `MDNS_ENABLED` | `true` (padrão) anuncia `hostname.local` na LAN |
+| `MDNS_HOSTNAME` | Padrão `viaaccess-qr` → `http://viaaccess-qr.local:3710/setup` |
 | `STATUS_LED_ENABLED` | `true` para módulo KY-016 (SETUP / ONLINE / SYNC_STALE) |
 | `STATUS_LED_RED_PIN` / `GREEN` / `BLUE` | Canais R/G/B do KY-016 em `gpiochip0` (padrões 22 / 27 / 23) |
 | `STDIN_SCANNER` | `true` com `--stdin` no systemd para leitor USB |
@@ -336,13 +344,14 @@ Em desenvolvimento (macOS) ou sem GPIO, usa driver simulado (log).
 Com `doorContact.enabled: true`, o agent observa um reed switch NF (ex.: MC38) e reporta
 `opened` / `closed` / `held_open` ao Identity (`POST /api/bridge/door-contact/events`).
 
-Padrão: **GPIO 5**, `activeLow: true` (porta fechada = contato fechado = linha em LOW com pull-up).
+Padrão: **GPIO 4** (pino físico 7), GND no pino 9, `activeLow: true`
+(porta fechada = contato fechado = linha em LOW com pull-up).
 Evite os pinos do relé (17) e do LED KY-016 (22/27/23).
 
 | MC38 | Pi (BCM) | Physical |
 |------|----------|----------|
-| COM / um fio | GPIO 5 | pin 29 |
-| outro fio | GND | pin 30 (ou outro GND) |
+| COM / um fio | GPIO 4 | pin 7 |
+| outro fio | GND | pin 9 (ou 6 / 14 / 20) |
 
 Opcional: resistor série ~1kΩ no fio do GPIO. Dupont / Wago / borne.
 
@@ -351,7 +360,7 @@ Config JSON:
 ```json
 "doorContact": {
   "enabled": true,
-  "gpioPin": 5,
+  "gpioPin": 4,
   "activeLow": true,
   "debounceMs": 50,
   "heldOpenAfterMs": 60000,

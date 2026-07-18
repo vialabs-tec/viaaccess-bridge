@@ -209,6 +209,7 @@ func preserveLocalHardware(cfg appconfig.RuntimeConfig, configPath string, doorF
 		return cfg
 	}
 	cfg.StatusLED = existing.StatusLED
+	cfg.MDNS = existing.MDNS
 	if !doorFromRequest {
 		cfg.DoorContact = existing.DoorContact
 	}

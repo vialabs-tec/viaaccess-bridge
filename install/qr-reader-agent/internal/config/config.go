@@ -35,6 +35,8 @@ type RuntimeConfig struct {
 
 	DoorContact DoorContactConfig `json:"doorContact"`
 
+	MDNS MDNSConfig `json:"mdns"`
+
 	Contingency ContingencyConfig `json:"contingency"`
 
 	SetupPIN string `json:"setupPin,omitempty"`
@@ -64,6 +66,12 @@ type DoorContactConfig struct {
 	HeldOpenAfterMs int  `json:"heldOpenAfterMs"`
 	// Simulated forces the in-memory driver (also used when GPIO is unavailable).
 	Simulated bool `json:"simulated"`
+}
+
+// MDNSConfig advertises hostname.local on the LAN so setup works without knowing the IP.
+type MDNSConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Hostname string `json:"hostname,omitempty"`
 }
 
 // StatusLEDConfig drives a KY-016 RGB module (common cathode, onboard resistors).
@@ -101,11 +109,15 @@ func DefaultRuntimeConfig() RuntimeConfig {
 		},
 		DoorContact: DoorContactConfig{
 			Enabled:         false,
-			GPIOPin:         5,
+			GPIOPin:         4,
 			ActiveLow:       true,
 			DebounceMs:      50,
 			HeldOpenAfterMs: 60_000,
 			Simulated:       false,
+		},
+		MDNS: MDNSConfig{
+			Enabled:  true,
+			Hostname: "viaaccess-qr",
 		},
 		Contingency: ContingencyConfig{
 			Enabled:               true,
@@ -127,6 +139,12 @@ func LoadFromFile(path string) (RuntimeConfig, error) {
 	var cfg RuntimeConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return RuntimeConfig{}, fmt.Errorf("parse config: %w", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err == nil {
+		if _, ok := raw["mdns"]; !ok {
+			cfg.MDNS = DefaultRuntimeConfig().MDNS
+		}
 	}
 	return cfg.Normalize(), nil
 }
@@ -167,7 +185,7 @@ func (c RuntimeConfig) Normalize() RuntimeConfig {
 	}
 	c.StatusLED.YellowPin = 0
 	if c.DoorContact.GPIOPin <= 0 {
-		c.DoorContact.GPIOPin = 5
+		c.DoorContact.GPIOPin = 4
 	}
 	if c.DoorContact.DebounceMs <= 0 {
 		c.DoorContact.DebounceMs = 50
@@ -175,6 +193,10 @@ func (c RuntimeConfig) Normalize() RuntimeConfig {
 	if c.DoorContact.HeldOpenAfterMs <= 0 {
 		c.DoorContact.HeldOpenAfterMs = 60_000
 	}
+	if strings.TrimSpace(c.MDNS.Hostname) == "" {
+		c.MDNS.Hostname = "viaaccess-qr"
+	}
+	c.MDNS.Hostname = sanitizeMDNSHostname(c.MDNS.Hostname)
 	if c.Contingency.OnlineRedeemTimeoutMs <= 0 {
 		c.Contingency.OnlineRedeemTimeoutMs = 3000
 	}
@@ -331,5 +353,39 @@ func ApplyEnv(cfg RuntimeConfig, env map[string]string) RuntimeConfig {
 	if v := strings.TrimSpace(get("DOOR_CONTACT_SIMULATED")); v == "true" {
 		cfg.DoorContact.Simulated = true
 	}
+	if v := strings.TrimSpace(get("MDNS_ENABLED")); v == "false" {
+		cfg.MDNS.Enabled = false
+	} else if v == "true" {
+		cfg.MDNS.Enabled = true
+	}
+	if v := strings.TrimSpace(get("MDNS_HOSTNAME")); v != "" {
+		cfg.MDNS.Hostname = v
+	}
 	return cfg.Normalize()
+}
+
+func sanitizeMDNSHostname(raw string) string {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	s = strings.TrimSuffix(s, ".local")
+	s = strings.TrimSuffix(s, ".")
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		case r == '_' || r == ' ':
+			b.WriteByte('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "viaaccess-qr"
+	}
+	if len(out) > 63 {
+		out = strings.TrimRight(out[:63], "-")
+	}
+	if out == "" {
+		return "viaaccess-qr"
+	}
+	return out
 }

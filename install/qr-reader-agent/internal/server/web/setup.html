@@ -10,6 +10,8 @@
     main { max-width: 32rem; margin: 0 auto; }
     h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
     p { color: #9aa7b5; font-size: 0.9rem; }
+    .hint-url { margin-top: 0.75rem; }
+    .hint-url code { color: #e8edf2; font-size: 0.85rem; }
     label { display: block; margin-top: 1rem; font-size: 0.85rem; }
     label.check {
       display: flex;
@@ -45,6 +47,7 @@
   <main>
     <h1>ViaAccess QR Reader</h1>
     <p>Provisionamento do appliance na rede local.</p>
+    <p class="hint-url">Prefira <code>http://viaaccess-qr.local:3710/setup</code> (mesma Wi‑Fi/rede). Se não resolver, use o IP do Pi.</p>
 
     <div class="tabs">
       <button type="button" class="tab active" data-tab="provision">Provisionar (QR)</button>
@@ -82,7 +85,7 @@
             <span>Monitorar reed switch (abertura forçada / held)</span>
           </label>
           <label>GPIO pin
-            <input name="doorContactGpioPin" type="number" value="5" min="1" />
+            <input name="doorContactGpioPin" type="number" value="4" min="1" />
           </label>
           <label class="check">
             <input name="doorContactSimulated" type="checkbox" />
@@ -128,7 +131,7 @@
             <span>Monitorar reed switch (abertura forçada / held)</span>
           </label>
           <label>GPIO pin
-            <input name="doorContactGpioPin" type="number" value="5" min="1" />
+            <input name="doorContactGpioPin" type="number" value="4" min="1" />
           </label>
           <label class="check">
             <input name="doorContactSimulated" type="checkbox" />
@@ -165,7 +168,7 @@
     function doorContactPayload(fd) {
       return {
         doorContactEnabled: fd.get('doorContactEnabled') === 'on',
-        doorContactGpioPin: Number(fd.get('doorContactGpioPin') || 5),
+        doorContactGpioPin: Number(fd.get('doorContactGpioPin') || 4),
         doorContactSimulated: fd.get('doorContactSimulated') === 'on',
       };
     }

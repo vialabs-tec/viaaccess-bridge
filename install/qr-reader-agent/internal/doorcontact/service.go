@@ -97,7 +97,7 @@ func (s *Service) SetEventHandler(h EventHandler) {
 
 func normalizeDoorContact(cfg appconfig.DoorContactConfig) appconfig.DoorContactConfig {
 	if cfg.GPIOPin <= 0 {
-		cfg.GPIOPin = 5
+		cfg.GPIOPin = 4
 	}
 	if cfg.DebounceMs <= 0 {
 		cfg.DebounceMs = 50

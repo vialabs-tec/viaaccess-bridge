@@ -18,6 +18,7 @@ import (
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/doorcontact"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/hidwedge"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/mdns"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/redeem"
@@ -100,6 +101,19 @@ func main() {
 	}
 	defer doorContact.Close()
 
+	mdnsAdv, err := mdns.Start(mdns.Config{
+		Enabled:  cfg.MDNS.Enabled,
+		Hostname: cfg.MDNS.Hostname,
+	}, cfg.HTTPPort)
+	if err != nil {
+		log.Printf("mdns: %v (continuing without LAN advertise)", err)
+		mdnsAdv = nil
+	}
+	if mdnsAdv != nil {
+		defer mdnsAdv.Close()
+		state.SetMDNSSnapshot(mdnsAdv.Snapshot)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -148,7 +162,15 @@ func main() {
 			state.OperationMode(),
 		)
 	} else {
-		log.Printf("viaaccess-qr-agent setup mode on http://%s/setup", addr)
+		setupURL := fmt.Sprintf("http://%s/setup", addr)
+		if mdnsAdv != nil {
+			if snap := mdnsAdv.Snapshot(); snap != nil {
+				if u, ok := snap["url"].(string); ok && u != "" {
+					setupURL = u
+				}
+			}
+		}
+		log.Printf("viaaccess-qr-agent setup mode — open %s (also http://%s/setup)", setupURL, addr)
 	}
 
 	<-ctx.Done()

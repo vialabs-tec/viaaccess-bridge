@@ -127,5 +127,5 @@ if [[ "$NO_START" -eq 0 ]]; then
 fi
 
 echo "installed ${BIN_DIR}/viaaccess-qr-agent (symlink ${LEGACY_BIN})"
-echo "config ${ETC_DIR}/ (open http://<ip>:3710/setup if not provisioned)"
+echo "config ${ETC_DIR}/ (open http://viaaccess-qr.local:3710/setup if not provisioned)"
 echo "status: systemctl status viaaccess-qr-agent viaaccess-qr-agent-health"

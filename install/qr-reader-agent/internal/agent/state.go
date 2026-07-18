@@ -33,6 +33,7 @@ type State struct {
 	relaySimulated    bool
 	statusLEDSnap     func() map[string]any
 	doorContactSnap   func() map[string]any
+	mdnsSnap          func() map[string]any
 
 	policy policy.Snapshot
 	outbox *outbox.Store
@@ -105,6 +106,12 @@ func (s *State) SetDoorContactSnapshot(fn func() map[string]any) {
 	s.doorContactSnap = fn
 }
 
+func (s *State) SetMDNSSnapshot(fn func() map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mdnsSnap = fn
+}
+
 func (s *State) OperationMode() OperationMode {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -165,6 +172,7 @@ func (s *State) Snapshot() map[string]any {
 		"relaySimulated":    s.relaySimulated,
 		"statusLed":         statusLEDSnapshot(s.statusLEDSnap),
 		"doorContact":       doorContactSnapshot(s.doorContactSnap),
+		"mdns":              optionalSnapshot(s.mdnsSnap),
 		"contingency": map[string]any{
 			"enabled":               s.contingency.Enabled,
 			"onlineRedeemTimeoutMs": s.contingency.OnlineRedeemTimeoutMs,
@@ -251,6 +259,13 @@ func statusLEDSnapshot(fn func() map[string]any) map[string]any {
 }
 
 func doorContactSnapshot(fn func() map[string]any) map[string]any {
+	if fn == nil {
+		return map[string]any{"enabled": false}
+	}
+	return fn()
+}
+
+func optionalSnapshot(fn func() map[string]any) map[string]any {
 	if fn == nil {
 		return map[string]any{"enabled": false}
 	}

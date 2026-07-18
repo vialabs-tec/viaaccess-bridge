@@ -20,7 +20,7 @@ func TestDebounceOpenClose(t *testing.T) {
 		DebounceMs:      30,
 		HeldOpenAfterMs: 60_000,
 		ActiveLow:       true,
-		GPIOPin:         5,
+		GPIOPin:         4,
 	}, func(ev Event) {
 		mu.Lock()
 		events = append(events, ev.Kind)
@@ -66,7 +66,7 @@ func TestHeldOpen(t *testing.T) {
 		DebounceMs:      10,
 		HeldOpenAfterMs: 40,
 		ActiveLow:       true,
-		GPIOPin:         5,
+		GPIOPin:         4,
 	}, func(ev Event) {
 		mu.Lock()
 		events = append(events, ev.Kind)
