@@ -196,17 +196,10 @@ func startScanInputs(
 		go runStdinScanner(ctx, scanSink)
 	}
 	hidPath := strings.TrimSpace(hidDevice)
-	if hidPath == "" && hidAuto {
-		if p, err := hidwedge.DiscoverKeyboardDevice(); err != nil {
-			log.Printf("hid-auto: %v", err)
-		} else {
-			hidPath = p
-		}
+	if hidPath != "" || hidAuto {
+		go runHIDScannerManager(ctx, hidPath, hidAuto, scanSink)
 	}
-	if hidPath != "" {
-		go runHIDScanner(ctx, hidPath, scanSink)
-	}
-	log.Printf("scan inputs active (stdin=%v hid=%q)", stdinMode, hidPath)
+	log.Printf("scan inputs active (stdin=%v hid=%q auto=%v)", stdinMode, hidPath, hidAuto)
 }
 
 type configSource interface {
@@ -295,19 +288,82 @@ func runStdinScanner(ctx context.Context, sink *scanSink) {
 	}
 }
 
-func runHIDScanner(ctx context.Context, devicePath string, sink *scanSink) {
-	reader, err := hidwedge.Open(devicePath)
-	if err != nil {
-		log.Printf("hid scanner: %v", err)
-		return
+const hidReconnectDelay = 2 * time.Second
+
+// runHIDScannerManager keeps the keyboard-wedge input alive across late USB
+// enumeration, unplug/replug, and scanner replacement. In auto mode each retry
+// rediscovers the current event device instead of retaining a stale eventN path.
+func runHIDScannerManager(
+	ctx context.Context,
+	configuredPath string,
+	auto bool,
+	sink *scanSink,
+) {
+	configuredPath = strings.TrimSpace(configuredPath)
+	lastFailure := ""
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		devicePath := configuredPath
+		if devicePath == "" && auto {
+			discovered, err := hidwedge.DiscoverKeyboardDevice()
+			if err != nil {
+				lastFailure = logHIDFailureOnce(lastFailure, fmt.Sprintf("hid-auto: %v", err))
+				if !waitForHIDRetry(ctx) {
+					return
+				}
+				continue
+			}
+			devicePath = discovered
+		}
+		if devicePath == "" {
+			return
+		}
+
+		reader, err := hidwedge.Open(devicePath)
+		if err != nil {
+			lastFailure = logHIDFailureOnce(lastFailure, fmt.Sprintf("hid scanner: %v", err))
+			if !waitForHIDRetry(ctx) {
+				return
+			}
+			continue
+		}
+
+		lastFailure = ""
+		log.Printf("hid scanner active on %s (EVIOCGRAB)", reader.Path())
+		err = reader.Run(ctx, func(line string) {
+			log.Printf("hid scan: %s", truncateForLog(line, 96))
+			sink.handleLine(ctx, line)
+		})
+		_ = reader.Close()
+		if ctx.Err() != nil {
+			return
+		}
+		log.Printf("hid scanner disconnected: %v; retrying", err)
+		if !waitForHIDRetry(ctx) {
+			return
+		}
 	}
-	defer reader.Close()
-	log.Printf("hid scanner active on %s (EVIOCGRAB)", reader.Path())
-	if err := reader.Run(ctx, func(line string) {
-		log.Printf("hid scan: %s", truncateForLog(line, 96))
-		sink.handleLine(ctx, line)
-	}); err != nil && ctx.Err() == nil {
-		log.Printf("hid scanner stopped: %v", err)
+}
+
+func logHIDFailureOnce(previous, current string) string {
+	if current != previous {
+		log.Print(current)
+	}
+	return current
+}
+
+func waitForHIDRetry(ctx context.Context) bool {
+	timer := time.NewTimer(hidReconnectDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

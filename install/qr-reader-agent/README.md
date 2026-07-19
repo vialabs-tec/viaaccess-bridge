@@ -293,7 +293,9 @@ Config remota e ciclo de sync: ver [Operação contínua](#operação-contínua-
 
 Scanners HID aparecem como teclado. Sob **systemd**, `--stdin` **não** recebe essas teclas (o serviço não tem o TTY do USB). O unit de produção usa `--hid-auto`, que abre `/dev/input/by-id/*-event-kbd` com `EVIOCGRAB`.
 
-Após provisionar pelo `/setup` sem reiniciar, o agent também sobe o HID automaticamente (antes só iniciava no boot se já estivesse `configured`). Com binário antigo, reinicie o serviço:
+O agent redescobre o HID periodicamente quando nenhum scanner está disponível e reconecta automaticamente após desconectar/conectar ou trocar o scanner. Em modo auto, qualquer keyboard wedge único é aceito; se houver vários teclados, fixe `HID_SCANNER_DEVICE`.
+
+Após provisionar pelo `/setup` sem reiniciar, o agent também sobe o HID automaticamente. Com binário antigo, reinicie o serviço:
 
 ```bash
 sudo systemctl restart viaaccess-qr-agent
