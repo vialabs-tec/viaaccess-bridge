@@ -1,18 +1,38 @@
 package syncclient
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+)
 
 func TestIsBridgeAuthFailure(t *testing.T) {
-	if !IsBridgeAuthFailure(401, []byte(`{"error":"Não autorizado."}`)) {
-		t.Fatal("expected 401 as auth failure")
+	if !IsBridgeAuthFailure(401, nil) {
+		t.Fatal("expected 401 to be auth failure")
 	}
 	if !IsBridgeAuthFailure(403, []byte(`{"code":"BRIDGE_DISABLED"}`)) {
-		t.Fatal("expected disabled bridge as auth failure")
+		t.Fatal("expected BRIDGE_DISABLED to be auth failure")
 	}
-	if IsBridgeAuthFailure(403, []byte(`{"code":"DYNAMIC_QR_NOT_ENTITLED"}`)) {
-		t.Fatal("unexpected auth failure for unrelated 403")
+	if IsBridgeAuthFailure(403, []byte(`{"code":"OTHER"}`)) {
+		t.Fatal("expected other 403 not to be auth failure")
 	}
-	if IsBridgeAuthFailure(500, []byte(`{}`)) {
-		t.Fatal("unexpected auth failure for 500")
+	if IsBridgeAuthFailure(500, nil) {
+		t.Fatal("expected 500 not to be auth failure")
+	}
+}
+
+func TestSetMdnsHostnameHeader(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "http://example", nil)
+	setMdnsHostnameHeader(req, "ViaAccess-QR-Entrada.local")
+	got := req.Header.Get("X-ViaAccess-Mdns-Hostname")
+	if got != "viaaccess-qr-entrada" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestSetMdnsHostnameHeaderEmpty(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "http://example", nil)
+	setMdnsHostnameHeader(req, "   ")
+	if req.Header.Get("X-ViaAccess-Mdns-Hostname") != "" {
+		t.Fatal("expected header omitted")
 	}
 }

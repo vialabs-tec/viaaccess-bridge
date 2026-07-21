@@ -94,21 +94,23 @@ func DefaultRuntimeConfig() RuntimeConfig {
 		HTTPHost:               "0.0.0.0",
 		HTTPPort:               DefaultHTTPPort,
 		UnlockOnAuthorizedOnly: true,
+		// Factory hardware map for the ViaAccess QR Reader appliance (zero-touch claim).
+		// Custom pinouts stay available under /setup → advanced.
 		Relay: RelayConfig{
-			Enabled:    false,
+			Enabled:    true,
 			GPIOPin:    17,
 			PulseMs:    3000,
 			ActiveHigh: true,
 		},
 		StatusLED: StatusLEDConfig{
-			Enabled:    false,
+			Enabled:    true,
 			RedPin:     22, // KY-016 R
 			GreenPin:   27, // KY-016 G
 			BluePin:    23, // KY-016 B
 			ActiveHigh: true,
 		},
 		DoorContact: DoorContactConfig{
-			Enabled:         false,
+			Enabled:         true,
 			GPIOPin:         4,
 			ActiveLow:       true,
 			DebounceMs:      50,

@@ -53,6 +53,21 @@ func SanitizeHostname(raw string) string {
 	return s
 }
 
+// HostnameFromAccessPointSlug builds a LAN hostname from an access point slug
+// (e.g. entrada-principal → viaaccess-qr-entrada-principal) so multiple Pis
+// on the same network get distinct .local names after claim.
+func HostnameFromAccessPointSlug(slug string) string {
+	s := SanitizeHostname(slug)
+	if s == DefaultHostname {
+		return DefaultHostname
+	}
+	prefix := DefaultHostname + "-"
+	if s == DefaultHostname || strings.HasPrefix(s, prefix) {
+		return s
+	}
+	return SanitizeHostname(prefix + s)
+}
+
 // Advertiser publishes viaaccess-qr.local (or custom host) pointing at this machine.
 type Advertiser struct {
 	hostname string

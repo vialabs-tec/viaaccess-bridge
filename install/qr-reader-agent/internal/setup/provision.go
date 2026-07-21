@@ -18,6 +18,7 @@ type ProvisionRequest struct {
 	PIN                  string `json:"pin"`
 	ClaimInput           string `json:"claimInput"`
 	IdentityURL          string `json:"identityUrl,omitempty"`
+	MdnsHostname         string `json:"mdnsHostname,omitempty"`
 	RelayEnabled         *bool  `json:"relayEnabled"`
 	RelayGPIOPin         *int   `json:"relayGpioPin"`
 	RelayPulseMs         *int   `json:"relayPulseMs"`

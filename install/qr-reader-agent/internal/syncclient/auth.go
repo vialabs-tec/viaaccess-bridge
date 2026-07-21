@@ -45,9 +45,27 @@ func setAgentVersionHeader(req *http.Request, version string) {
 	req.Header.Set("X-ViaAccess-Agent-Version", version)
 }
 
+func setMdnsHostnameHeader(req *http.Request, hostname string) {
+	hostname = strings.TrimSpace(hostname)
+	if hostname == "" {
+		return
+	}
+	// Strip accidental .local; Identity stores the label only.
+	hostname = strings.TrimSuffix(strings.ToLower(hostname), ".local")
+	hostname = strings.Trim(hostname, ".")
+	if hostname == "" {
+		return
+	}
+	if len(hostname) > 63 {
+		hostname = hostname[:63]
+	}
+	req.Header.Set("X-ViaAccess-Mdns-Hostname", hostname)
+}
+
 func (c *Client) setBridgeHeaders(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
 	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
 	setDoorContactEnabledHeader(req, c.cfg.DoorContactEnabled)
 	setAgentVersionHeader(req, c.cfg.AgentVersion)
+	setMdnsHostnameHeader(req, c.cfg.MdnsHostname)
 }

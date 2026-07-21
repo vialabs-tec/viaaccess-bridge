@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -109,8 +110,36 @@ func main() {
 		log.Printf("mdns: %v (continuing without LAN advertise)", err)
 		mdnsAdv = nil
 	}
+	var mdnsMu sync.Mutex
+	restartMDNS := func(hostname string, enabled bool) {
+		mdnsMu.Lock()
+		defer mdnsMu.Unlock()
+		if mdnsAdv != nil {
+			_ = mdnsAdv.Close()
+			mdnsAdv = nil
+		}
+		next, startErr := mdns.Start(mdns.Config{
+			Enabled:  enabled,
+			Hostname: hostname,
+		}, cfg.HTTPPort)
+		if startErr != nil {
+			log.Printf("mdns restart: %v", startErr)
+			state.SetMDNSSnapshot(func() map[string]any {
+				return map[string]any{"enabled": false, "hostname": hostname}
+			})
+			return
+		}
+		mdnsAdv = next
+		state.SetMDNSSnapshot(mdnsAdv.Snapshot)
+	}
 	if mdnsAdv != nil {
-		defer mdnsAdv.Close()
+		defer func() {
+			mdnsMu.Lock()
+			defer mdnsMu.Unlock()
+			if mdnsAdv != nil {
+				_ = mdnsAdv.Close()
+			}
+		}()
 		state.SetMDNSSnapshot(mdnsAdv.Snapshot)
 	}
 
@@ -137,6 +166,7 @@ func main() {
 		StartScanners: func() {
 			startScanInputs(ctx, app, policyHolder, outboxStore, nonceStore, relayService, state, *stdinMode, *hidDevice, *hidAuto)
 		},
+		OnMDNSHostnameChanged: restartMDNS,
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.HTTPHost, cfg.HTTPPort)
@@ -163,8 +193,11 @@ func main() {
 		)
 	} else {
 		setupURL := fmt.Sprintf("http://%s/setup", addr)
-		if mdnsAdv != nil {
-			if snap := mdnsAdv.Snapshot(); snap != nil {
+		mdnsMu.Lock()
+		adv := mdnsAdv
+		mdnsMu.Unlock()
+		if adv != nil {
+			if snap := adv.Snapshot(); snap != nil {
 				if u, ok := snap["url"].(string); ok && u != "" {
 					setupURL = u
 				}

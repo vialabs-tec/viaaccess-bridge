@@ -31,44 +31,45 @@ Sem `config.json` com `"configured": true`, o agent sobe em **modo setup** e anu
 http://viaaccess-qr.local:3710/setup
 ```
 
-Se `.local` não resolver no celular/notebook, use `http://<ip>:3710/setup`. Vários appliances na mesma rede: defina `MDNS_HOSTNAME` distinto (ex. `viaaccess-qr-entrada`).
+Se `.local` não resolver no celular/notebook, use `http://<ip>:3710/setup`. No claim, o hostname
+passa a ser `viaaccess-qr-{slug-do-ponto}` (ex. `viaaccess-qr-entrada-principal.local`). Override
+opcional em Configuração avançada (segundo leitor no mesmo ponto) ou `MDNS_HOSTNAME` antes do claim.
 
 Config padrão em produção: `/etc/viaaccess-qr-reader/config.json` (permissões `0600`).
 
 PIN de fábrica (opcional): variável `SETUP_PIN` ou flag `--setup-pin`.
 
-### Fluxo recomendado: QR zero-SSH
+### Fluxo recomendado: QR zero-touch (sem SSH, sem GPIO no formulário)
 
-Um leitor novo é provisionado sem SSH. O admin gera um token de uso único; o técnico cola no appliance na rede local.
+Um leitor novo é provisionado sem SSH e sem escolher pinos. O mapa elétrico de fábrica
+(relé GPIO 17, sensor porta GPIO 4, LED R/G/B 22/27/23) é aplicado automaticamente no claim.
 
 ```
 Admin (Identity)                    Appliance (rede local)
      │                                      │
      │  Provisionar (QR) → clm_… (~15 min)  │
-     │ ───────────────────────────────────► │  :3710/setup → aba Provisionar
+     │ ───────────────────────────────────► │  :3710/setup → cole claim
      │                                      │  POST Identity /api/bridge/provision/claim
-     │                                      │  recebe idb_… + defaults
-     │                                      │  entra em ONLINE (sem reinício)
+     │                                      │  recebe idb_… + defaults operacionais
+     │                                      │  grava GPIO de fábrica → ONLINE
 ```
 
 **1. Admin (Identity)**
 
-1. Ponto em modo **QR dinâmico no leitor** (`DYNAMIC_QR_AT_READER`).
-2. Admin → ponto → **Leitores (bridge)**.
-3. Informe o nome do leitor → **Provisionar (QR)**.
-4. Escaneie o QR ou copie a URL `…/bridge/provision?t=clm_…` (válida por ~15 minutos).
+1. Admin → ponto → **Leitores (bridge)** (perfis com passagem pelo app, app+QR ou QR no leitor).
+2. Informe o nome do leitor → **Provisionar (QR)**.
+3. Escaneie o QR ou copie a URL `…/bridge/provision?t=clm_…` (válida por ~15 minutos).
 
 Cada token `clm_…` é **uso único**: provisiona um appliance. Para outro leitor, gere outro QR.
 
 **2. Appliance**
 
-1. Conecte o Pi/leitor na rede (mesma LAN do técnico).
-2. Abra `http://viaaccess-qr.local:3710/setup` (mesma rede Wi‑Fi/LAN; fallback: `http://<ip>:3710/setup`).
-3. Aba **Provisionar (QR)**.
-4. Cole a **URL completa** ou só o token `clm_…`.
+1. Conecte o Pi/leitor na rede (mesma LAN do técnico), com a fiação padrão do produto.
+2. Abra `http://viaaccess-qr.local:3710/setup` (fallback: `http://<ip>:3710/setup`).
+3. Aba **Provisionar (QR)** → cole a **URL completa** ou só o token `clm_…`.
    - Se colar só `clm_…`, informe também a URL do Identity.
-5. Ajuste relé GPIO se necessário → **Provisionar e testar**.
-6. O agent **ativa o modo operação automaticamente** (não precisa reiniciar o processo).
+4. **Provisionar** (não é preciso abrir GPIO). Fiação diferente: **Configuração avançada**.
+5. O agent **ativa o modo operação automaticamente** (não precisa reiniciar o processo).
 
 **3. Validar**
 
@@ -190,7 +191,16 @@ O Identity define os **defaults operacionais** do leitor. O agent autentica com 
 | `unlockOnAuthorizedOnly` | Só acionar relé/webhook em `AUTHORIZED` |
 | `accessPointSlug` | Ponto vinculado à device key |
 
-**Permanecem só no appliance** (configurados no `/setup` ou JSON local): relé GPIO, `unlockWebhookUrl`, `httpPort`, PIN de fábrica.
+**Permanecem só no appliance** (mapa de fábrica no claim, ou **Configuração avançada** / JSON local):
+relé GPIO, sensor de porta, Status LED, `unlockWebhookUrl`, `httpPort`, PIN de fábrica.
+
+Mapa de fábrica (zero-touch):
+
+| Função | BCM | Notas |
+|--------|-----|--------|
+| Relé | 17 | `enabled`, pulso 3000 ms |
+| Sensor porta (MC38) | 4 | `activeLow` |
+| LED KY-016 R/G/B | 22 / 27 / 23 | status online / contingência / setup |
 
 Quando o Identity envia config nova:
 
@@ -370,8 +380,8 @@ Config JSON:
 }
 ```
 
-Env: `DOOR_CONTACT_*` ainda sobrescreve no boot (avançado). Preferência: marcar no
-`/setup` (como o relé) para gravar em `config.json` sem editar `.env`.
+Env: `DOOR_CONTACT_*` ainda sobrescreve no boot (avançado). No caminho zero-touch o claim
+já habilita o sensor no GPIO 4; use **Configuração avançada** no `/setup` só para pinos ou simulação.
 
 Homologação sem hardware: marque **Simular** no setup, ou `simulated: true` / `POST /api/door-contact/sim`.
 

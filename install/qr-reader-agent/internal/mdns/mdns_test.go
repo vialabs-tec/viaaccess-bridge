@@ -24,3 +24,18 @@ func TestConfigNormalizeDefault(t *testing.T) {
 		t.Fatalf("hostname=%q", cfg.Hostname)
 	}
 }
+
+func TestHostnameFromAccessPointSlug(t *testing.T) {
+	cases := map[string]string{
+		"":                   DefaultHostname,
+		"entrada-principal":  "viaaccess-qr-entrada-principal",
+		"Entrada_Principal":  "viaaccess-qr-entrada-principal",
+		"viaaccess-qr":       DefaultHostname,
+		"viaaccess-qr-porta": "viaaccess-qr-porta",
+	}
+	for in, want := range cases {
+		if got := HostnameFromAccessPointSlug(in); got != want {
+			t.Fatalf("HostnameFromAccessPointSlug(%q)=%q want %q", in, got, want)
+		}
+	}
+}

@@ -52,6 +52,8 @@ type App struct {
 	// startScanners runs once when the appliance becomes operational (boot or hot provision).
 	startScannersOnce sync.Once
 	startScanners     func()
+
+	onMDNSHostnameChanged func(hostname string, enabled bool)
 }
 
 type AppDeps struct {
@@ -68,22 +70,25 @@ type AppDeps struct {
 	DoorContact  *doorcontact.Service
 	// StartScanners starts HID/stdin readers. Called once on enter-operational (boot or provision).
 	StartScanners func()
+	// OnMDNSHostnameChanged restarts LAN advertise when hostname changes after provision/save.
+	OnMDNSHostnameChanged func(hostname string, enabled bool)
 }
 
 func NewApp(deps AppDeps) *App {
 	app := &App{
-		rootCtx:      deps.RootCtx,
-		configPath:   deps.ConfigPath,
-		policyPath:   deps.PolicyPath,
-		setupPIN:     deps.SetupPIN,
-		cfg:          deps.Config.Normalize(),
-		state:        deps.State,
-		policyHolder: deps.PolicyHolder,
-		outbox:       deps.Outbox,
-		nonce:        deps.Nonce,
-		relayService: deps.RelayService,
-		doorContact:  deps.DoorContact,
-		startScanners: deps.StartScanners,
+		rootCtx:               deps.RootCtx,
+		configPath:            deps.ConfigPath,
+		policyPath:            deps.PolicyPath,
+		setupPIN:              deps.SetupPIN,
+		cfg:                   deps.Config.Normalize(),
+		state:                 deps.State,
+		policyHolder:          deps.PolicyHolder,
+		outbox:                deps.Outbox,
+		nonce:                 deps.Nonce,
+		relayService:          deps.RelayService,
+		doorContact:           deps.DoorContact,
+		startScanners:         deps.StartScanners,
+		onMDNSHostnameChanged: deps.OnMDNSHostnameChanged,
 	}
 	if app.doorContact != nil {
 		app.doorContact.SetEventHandler(app.onDoorContactEvent)
@@ -112,11 +117,12 @@ func (a *App) Config() appconfig.RuntimeConfig {
 
 func (a *App) SaveConfig(cfg appconfig.RuntimeConfig) error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	wasConfigured := a.cfg.Configured
+	prevHost := a.cfg.MDNS.Hostname
+	prevEnabled := a.cfg.MDNS.Enabled
 	cfg = cfg.Normalize()
 	if err := appconfig.SaveToFile(a.configPath, cfg); err != nil {
+		a.mu.Unlock()
 		return err
 	}
 	a.cfg = cfg
@@ -139,6 +145,15 @@ func (a *App) SaveConfig(cfg appconfig.RuntimeConfig) error {
 	} else {
 		a.state.SetConfigured(false)
 		a.rebuildHandlerLocked()
+	}
+	notifyMDNS := a.onMDNSHostnameChanged
+	hostChanged := cfg.MDNS.Hostname != prevHost || cfg.MDNS.Enabled != prevEnabled
+	newHost := cfg.MDNS.Hostname
+	newEnabled := cfg.MDNS.Enabled
+	a.mu.Unlock()
+
+	if notifyMDNS != nil && hostChanged {
+		notifyMDNS(newHost, newEnabled)
 	}
 	return nil
 }
@@ -255,6 +270,7 @@ func (a *App) onDoorContactEvent(ev doorcontact.Event) {
 		RelayEnabled:       cfg.Relay.Enabled,
 		DoorContactEnabled: cfg.DoorContact.Enabled,
 		AgentVersion:       buildinfo.Version,
+		MdnsHostname:       cfg.MDNS.Hostname,
 	}, nil)
 	ctx, cancel := context.WithTimeout(a.rootCtx, 12*time.Second)
 	defer cancel()
@@ -306,6 +322,7 @@ func (a *App) runSyncLoop(ctx context.Context) {
 		RelayEnabled:       cfg.Relay.Enabled,
 		DoorContactEnabled: cfg.DoorContact.Enabled,
 		AgentVersion:       buildinfo.Version,
+		MdnsHostname:       cfg.MDNS.Hostname,
 	}, nil)
 
 	ticker := time.NewTicker(60 * time.Second)
@@ -320,6 +337,7 @@ func (a *App) runSyncLoop(ctx context.Context) {
 			RelayEnabled:       current.Relay.Enabled,
 			DoorContactEnabled: current.DoorContact.Enabled,
 			AgentVersion:       buildinfo.Version,
+			MdnsHostname:       current.MDNS.Hostname,
 		}, nil)
 
 		syncCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -459,6 +477,7 @@ func (a *App) pollCommandsOnce(ctx context.Context, idle, fast time.Duration) ti
 		RelayEnabled:       cfg.Relay.Enabled,
 		DoorContactEnabled: cfg.DoorContact.Enabled,
 		AgentVersion:       buildinfo.Version,
+		MdnsHostname:       cfg.MDNS.Hostname,
 	}, nil)
 
 	pollCtx, cancel := context.WithTimeout(ctx, 8*time.Second)

@@ -29,8 +29,8 @@
       accent-color: #3b82f6;
     }
     textarea { min-height: 4.5rem; font-family: ui-monospace, monospace; font-size: 0.8rem; }
-    button { margin-top: 1.25rem; width: 100%; padding: 0.7rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
-    button:disabled { opacity: 0.6; cursor: wait; }
+    button[type="submit"] { margin-top: 1.25rem; width: 100%; padding: 0.7rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
+    button[type="submit"]:disabled { opacity: 0.6; cursor: wait; }
     .tabs { display: flex; gap: 0.5rem; margin-top: 1rem; }
     .tab { flex: 1; padding: 0.55rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: #9aa7b5; cursor: pointer; }
     .tab.active { border-color: #3b82f6; color: #e8edf2; }
@@ -41,12 +41,35 @@
     .ok { color: #4ade80; }
     fieldset { border: 1px solid #2a3441; border-radius: 8px; margin-top: 1rem; padding: 0.75rem 1rem; }
     legend { padding: 0 0.35rem; font-size: 0.85rem; color: #9aa7b5; }
+    .factory {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      border: 1px solid #2a3441;
+      background: #121820;
+      font-size: 0.8rem;
+      color: #9aa7b5;
+      line-height: 1.45;
+    }
+    .factory strong { color: #e8edf2; font-weight: 600; }
+    details.advanced {
+      margin-top: 1rem;
+      border: 1px solid #2a3441;
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem 0.75rem;
+    }
+    details.advanced summary {
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: #9aa7b5;
+      padding: 0.35rem 0;
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>ViaAccess QR Reader</h1>
-    <p>Provisionamento do appliance na rede local.</p>
+    <p>Provisionamento zero-touch: cole o claim do admin. GPIO/relé usam o mapa de fábrica.</p>
     <p class="hint-url">Prefira <code>http://viaaccess-qr.local:3710/setup</code> (mesma Wi‑Fi/rede). Se não resolver, use o IP do Pi.</p>
 
     <div class="tabs">
@@ -60,39 +83,56 @@
           <input name="pin" type="password" autocomplete="off" />
         </label>
         <label>URL ou token de provisionamento
-          <textarea name="claimInput" required placeholder="https://IP-do-Mac:3100/bridge/provision?t=clm_… ou só clm_…"></textarea>
+          <textarea name="claimInput" required placeholder="https://…/bridge/provision?t=clm_… ou só clm_…"></textarea>
         </label>
         <label>URL do Identity (obrigatória se colar só o token clm_)
           <input name="identityUrl" placeholder="http://192.168.x.x:3100" />
         </label>
-        <fieldset>
-          <legend>Relé</legend>
-          <label class="check">
-            <input name="relayEnabled" type="checkbox" checked />
-            <span>Acionar relé GPIO após autorização</span>
-          </label>
-          <label>GPIO pin
-            <input name="relayGpioPin" type="number" value="17" min="1" />
-          </label>
-          <label>Pulso (ms)
-            <input name="relayPulseMs" type="number" value="3000" min="100" />
-          </label>
-        </fieldset>
-        <fieldset>
-          <legend>Sensor de porta (MC38)</legend>
-          <label class="check">
-            <input name="doorContactEnabled" type="checkbox" />
-            <span>Monitorar reed switch (abertura forçada / held)</span>
-          </label>
-          <label>GPIO pin
-            <input name="doorContactGpioPin" type="number" value="4" min="1" />
-          </label>
-          <label class="check">
-            <input name="doorContactSimulated" type="checkbox" />
-            <span>Simular (sem hardware, para homologação)</span>
-          </label>
-        </fieldset>
-        <button type="submit">Provisionar e testar</button>
+        <div class="factory">
+          <strong>Mapa de fábrica (aplicado automaticamente)</strong><br />
+          Relé GPIO 17 · Sensor porta GPIO 4 · LED R/G/B 22/27/23
+        </div>
+        <details class="advanced" id="provision-advanced">
+          <summary>Configuração avançada (GPIO / hostname LAN)</summary>
+          <fieldset>
+            <legend>Hostname mDNS (opcional)</legend>
+            <label>Hostname .local
+              <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
+            </label>
+            <p style="margin:0.5rem 0 0;font-size:0.75rem;color:#9aa7b5;line-height:1.4">
+              Vazio: usa o slug do ponto (<code>viaaccess-qr-{slug}</code>). Preencha só se houver
+              um segundo leitor no mesmo ponto.
+            </p>
+          </fieldset>
+          <fieldset>
+            <legend>Relé</legend>
+            <label class="check">
+              <input name="relayEnabled" type="checkbox" checked />
+              <span>Acionar relé GPIO após autorização</span>
+            </label>
+            <label>GPIO pin
+              <input name="relayGpioPin" type="number" value="17" min="1" />
+            </label>
+            <label>Pulso (ms)
+              <input name="relayPulseMs" type="number" value="3000" min="100" />
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Sensor de porta (MC38)</legend>
+            <label class="check">
+              <input name="doorContactEnabled" type="checkbox" checked />
+              <span>Monitorar reed switch (abertura forçada / held)</span>
+            </label>
+            <label>GPIO pin
+              <input name="doorContactGpioPin" type="number" value="4" min="1" />
+            </label>
+            <label class="check">
+              <input name="doorContactSimulated" type="checkbox" />
+              <span>Simular (sem hardware, para homologação)</span>
+            </label>
+          </fieldset>
+        </details>
+        <button type="submit">Provisionar</button>
         <div id="provision-msg" class="msg"></div>
       </form>
     </div>
@@ -111,33 +151,50 @@
         <label>Slug do ponto (opcional)
           <input name="accessPointSlug" placeholder="entrada-principal" />
         </label>
-        <fieldset>
-          <legend>Relé</legend>
-          <label class="check">
-            <input name="relayEnabled" type="checkbox" checked />
-            <span>Acionar relé GPIO após autorização</span>
-          </label>
-          <label>GPIO pin
-            <input name="relayGpioPin" type="number" value="17" min="1" />
-          </label>
-          <label>Pulso (ms)
-            <input name="relayPulseMs" type="number" value="3000" min="100" />
-          </label>
-        </fieldset>
-        <fieldset>
-          <legend>Sensor de porta (MC38)</legend>
-          <label class="check">
-            <input name="doorContactEnabled" type="checkbox" />
-            <span>Monitorar reed switch (abertura forçada / held)</span>
-          </label>
-          <label>GPIO pin
-            <input name="doorContactGpioPin" type="number" value="4" min="1" />
-          </label>
-          <label class="check">
-            <input name="doorContactSimulated" type="checkbox" />
-            <span>Simular (sem hardware, para homologação)</span>
-          </label>
-        </fieldset>
+        <div class="factory">
+          <strong>Mapa de fábrica (aplicado automaticamente)</strong><br />
+          Relé GPIO 17 · Sensor porta GPIO 4 · LED R/G/B 22/27/23
+        </div>
+        <details class="advanced" id="manual-advanced">
+          <summary>Configuração avançada (GPIO / hostname LAN)</summary>
+          <fieldset>
+            <legend>Hostname mDNS (opcional)</legend>
+            <label>Hostname .local
+              <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
+            </label>
+            <p style="margin:0.5rem 0 0;font-size:0.75rem;color:#9aa7b5;line-height:1.4">
+              Vazio: usa o slug do ponto (<code>viaaccess-qr-{slug}</code>). Preencha só se houver
+              um segundo leitor no mesmo ponto.
+            </p>
+          </fieldset>
+          <fieldset>
+            <legend>Relé</legend>
+            <label class="check">
+              <input name="relayEnabled" type="checkbox" checked />
+              <span>Acionar relé GPIO após autorização</span>
+            </label>
+            <label>GPIO pin
+              <input name="relayGpioPin" type="number" value="17" min="1" />
+            </label>
+            <label>Pulso (ms)
+              <input name="relayPulseMs" type="number" value="3000" min="100" />
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Sensor de porta (MC38)</legend>
+            <label class="check">
+              <input name="doorContactEnabled" type="checkbox" checked />
+              <span>Monitorar reed switch (abertura forçada / held)</span>
+            </label>
+            <label>GPIO pin
+              <input name="doorContactGpioPin" type="number" value="4" min="1" />
+            </label>
+            <label class="check">
+              <input name="doorContactSimulated" type="checkbox" />
+              <span>Simular (sem hardware, para homologação)</span>
+            </label>
+          </fieldset>
+        </details>
         <label class="check">
           <input name="emitDetection" type="checkbox" checked />
           <span>Emitir detection no ViaAccess (recomendado sem câmera na porta)</span>
@@ -157,24 +214,23 @@
       });
     });
 
-    function relayPayload(fd) {
+    function hardwarePayload(fd, advancedOpen) {
+      if (!advancedOpen) return {};
+      const mdnsHostname = String(fd.get('mdnsHostname') || '').trim();
       return {
         relayEnabled: fd.get('relayEnabled') === 'on',
         relayGpioPin: Number(fd.get('relayGpioPin') || 17),
         relayPulseMs: Number(fd.get('relayPulseMs') || 3000),
-      };
-    }
-
-    function doorContactPayload(fd) {
-      return {
         doorContactEnabled: fd.get('doorContactEnabled') === 'on',
         doorContactGpioPin: Number(fd.get('doorContactGpioPin') || 4),
         doorContactSimulated: fd.get('doorContactSimulated') === 'on',
+        ...(mdnsHostname ? { mdnsHostname } : {}),
       };
     }
 
     const provisionForm = document.getElementById('provision-form');
     const provisionMsg = document.getElementById('provision-msg');
+    const provisionAdvanced = document.getElementById('provision-advanced');
     provisionForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       provisionMsg.textContent = '';
@@ -184,8 +240,7 @@
         pin: fd.get('pin') || '',
         claimInput: fd.get('claimInput'),
         identityUrl: fd.get('identityUrl') || '',
-        ...relayPayload(fd),
-        ...doorContactPayload(fd),
+        ...hardwarePayload(fd, provisionAdvanced.open),
       };
       const btn = provisionForm.querySelector('button[type="submit"]');
       btn.disabled = true;
@@ -213,6 +268,7 @@
 
     const setupForm = document.getElementById('setup-form');
     const manualMsg = document.getElementById('manual-msg');
+    const manualAdvanced = document.getElementById('manual-advanced');
     setupForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       manualMsg.textContent = '';
@@ -224,8 +280,7 @@
         deviceKey: fd.get('deviceKey'),
         accessPointSlug: fd.get('accessPointSlug') || '',
         emitDetection: fd.get('emitDetection') === 'on',
-        ...relayPayload(fd),
-        ...doorContactPayload(fd),
+        ...hardwarePayload(fd, manualAdvanced.open),
       };
       const btn = setupForm.querySelector('button[type="submit"]');
       btn.disabled = true;

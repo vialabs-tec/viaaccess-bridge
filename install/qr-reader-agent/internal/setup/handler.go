@@ -10,6 +10,7 @@ import (
 	"time"
 
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/mdns"
 )
 
 type SaveRequest struct {
@@ -17,6 +18,7 @@ type SaveRequest struct {
 	IdentityURL          string `json:"identityUrl"`
 	DeviceKey            string `json:"deviceKey"`
 	AccessPointSlug      string `json:"accessPointSlug"`
+	MdnsHostname         string `json:"mdnsHostname,omitempty"`
 	EmitDetection        *bool  `json:"emitDetection"`
 	RelayEnabled         *bool  `json:"relayEnabled"`
 	RelayGPIOPin         *int   `json:"relayGpioPin"`
@@ -87,8 +89,10 @@ func (h *Handler) HandleSave(w http.ResponseWriter, r *http.Request) {
 		cfg.Relay.PulseMs = *req.RelayPulseMs
 	}
 	doorFromRequest := applyDoorContactFromRequest(&cfg, req.DoorContactEnabled, req.DoorContactGPIOPin, req.DoorContactSimulated)
+	hardwareFromRequest := doorFromRequest || req.RelayEnabled != nil || req.RelayGPIOPin != nil || req.RelayPulseMs != nil
 	cfg.SetupPIN = strings.TrimSpace(h.PIN)
-	cfg = preserveLocalHardware(cfg, h.ConfigPath, doorFromRequest)
+	cfg = preserveLocalHardware(cfg, h.ConfigPath, hardwareFromRequest)
+	cfg = applyMDNSHostname(cfg, req.MdnsHostname)
 	cfg = cfg.Normalize()
 
 	if err := cfg.ValidateOperational(); err != nil {
@@ -110,7 +114,11 @@ func (h *Handler) HandleSave(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "Configuração salva. Leitor ativo."})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":           true,
+		"message":      fmt.Sprintf("Configuração salva. Leitor ativo. LAN: http://%s.local:%d/setup", cfg.MDNS.Hostname, cfg.HTTPPort),
+		"mdnsHostname": cfg.MDNS.Hostname,
+	})
 }
 
 func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
@@ -170,8 +178,10 @@ func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
 		cfg.Relay.PulseMs = *req.RelayPulseMs
 	}
 	doorFromRequest := applyDoorContactFromRequest(&cfg, req.DoorContactEnabled, req.DoorContactGPIOPin, req.DoorContactSimulated)
+	hardwareFromRequest := doorFromRequest || req.RelayEnabled != nil || req.RelayGPIOPin != nil || req.RelayPulseMs != nil
 	cfg.SetupPIN = strings.TrimSpace(h.PIN)
-	cfg = preserveLocalHardware(cfg, h.ConfigPath, doorFromRequest)
+	cfg = preserveLocalHardware(cfg, h.ConfigPath, hardwareFromRequest)
+	cfg = applyMDNSHostname(cfg, req.MdnsHostname)
 	cfg = cfg.Normalize()
 
 	if err := cfg.ValidateOperational(); err != nil {
@@ -195,23 +205,46 @@ func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":              true,
-		"message":         "Provisionamento concluído. Leitor ativo.",
+		"message":         fmt.Sprintf("Provisionamento concluído. Leitor ativo. LAN: http://%s.local:%d/setup", cfg.MDNS.Hostname, cfg.HTTPPort),
 		"accessPointSlug": cfg.AccessPointSlug,
 		"deviceId":        cfg.DeviceID,
+		"mdnsHostname":    cfg.MDNS.Hostname,
 	})
 }
 
-// preserveLocalHardware keeps Status LED (and door contact when the setup form
-// did not send door fields) across setup save / QR provision.
-func preserveLocalHardware(cfg appconfig.RuntimeConfig, configPath string, doorFromRequest bool) appconfig.RuntimeConfig {
+// applyMDNSHostname sets the LAN hostname from an advanced override, else from
+// the access point slug (viaaccess-qr-{slug}), else keeps the factory default.
+func applyMDNSHostname(cfg appconfig.RuntimeConfig, override string) appconfig.RuntimeConfig {
+	if strings.TrimSpace(override) != "" {
+		cfg.MDNS.Hostname = strings.TrimSpace(override)
+		return cfg
+	}
+	if slug := strings.TrimSpace(cfg.AccessPointSlug); slug != "" {
+		cfg.MDNS.Hostname = mdns.HostnameFromAccessPointSlug(slug)
+	}
+	return cfg
+}
+
+// preserveLocalHardware keeps prior GPIO wiring on reprovision.
+// Zero-touch claim uses factory defaults from DefaultRuntimeConfig when no prior
+// hardware was enabled and the setup form did not send overrides.
+// mDNS hostname is resolved separately via applyMDNSHostname (slug / override).
+func preserveLocalHardware(cfg appconfig.RuntimeConfig, configPath string, hardwareFromRequest bool) appconfig.RuntimeConfig {
 	existing, err := appconfig.LoadFromFile(configPath)
 	if err != nil {
 		return cfg
 	}
-	cfg.StatusLED = existing.StatusLED
-	cfg.MDNS = existing.MDNS
-	if !doorFromRequest {
+	if hardwareFromRequest {
+		// Form set relay/door; keep status LED from disk when it was already in use.
+		if existing.StatusLED.Enabled {
+			cfg.StatusLED = existing.StatusLED
+		}
+		return cfg
+	}
+	if existing.Relay.Enabled || existing.DoorContact.Enabled || existing.StatusLED.Enabled {
+		cfg.Relay = existing.Relay
 		cfg.DoorContact = existing.DoorContact
+		cfg.StatusLED = existing.StatusLED
 	}
 	return cfg
 }

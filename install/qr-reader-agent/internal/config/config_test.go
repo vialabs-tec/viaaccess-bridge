@@ -13,6 +13,19 @@ func TestNormalizeDefaults(t *testing.T) {
 	}
 }
 
+func TestFactoryHardwareDefaults(t *testing.T) {
+	cfg := DefaultRuntimeConfig()
+	if !cfg.Relay.Enabled || cfg.Relay.GPIOPin != 17 || cfg.Relay.PulseMs != 3000 {
+		t.Fatalf("unexpected factory relay: %+v", cfg.Relay)
+	}
+	if !cfg.DoorContact.Enabled || cfg.DoorContact.GPIOPin != 4 || !cfg.DoorContact.ActiveLow {
+		t.Fatalf("unexpected factory doorContact: %+v", cfg.DoorContact)
+	}
+	if !cfg.StatusLED.Enabled || cfg.StatusLED.RedPin != 22 || cfg.StatusLED.GreenPin != 27 || cfg.StatusLED.BluePin != 23 {
+		t.Fatalf("unexpected factory statusLed: %+v", cfg.StatusLED)
+	}
+}
+
 func TestValidateOperational(t *testing.T) {
 	cfg := DefaultRuntimeConfig()
 	cfg.Configured = true
