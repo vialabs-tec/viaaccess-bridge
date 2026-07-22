@@ -366,6 +366,9 @@ Evite os pinos do relé (17) e do LED KY-016 (22/27/23).
 | outro fio | GND | pin 9 (ou 6 / 14 / 20) |
 
 Opcional: resistor série ~1kΩ no fio do GPIO. Dupont / Wago / borne.
+Para case com borne externo (parafusável como o módulo de relé), use o layout
+[`docs/appliance-io-panel.md`](docs/appliance-io-panel.md) + SVG 1:1
+[`docs/door-terminal-board.svg`](docs/door-terminal-board.svg).
 
 Config JSON:
 

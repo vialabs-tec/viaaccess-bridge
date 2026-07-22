@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ViaAccess QR Reader  door sensor terminal board (1:1 mm)
+  Print at 100%. Board 30◊20 mm, M3 holes at (5,10) and (25,10).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="50mm" viewBox="0 0 80 50">
+  <defs>
+    <style>
+      .title { font: 700 3.2px system-ui, sans-serif; fill: #111; }
+      .label { font: 2.4px system-ui, sans-serif; fill: #222; }
+      .dim { font: 2.2px ui-monospace, monospace; fill: #555; }
+      .hint { font: 2px system-ui, sans-serif; fill: #666; }
+      .board { fill: #c8e6c9; stroke: #2e7d32; stroke-width: 0.35; }
+      .term { fill: #eceff1; stroke: #455a64; stroke-width: 0.3; }
+      .screw { fill: #90a4ae; stroke: #37474f; stroke-width: 0.25; }
+      .hole { fill: #fff; stroke: #111; stroke-width: 0.35; }
+      .pad { fill: #ffcc80; stroke: #e65100; stroke-width: 0.25; }
+      .wire { stroke: #1565c0; stroke-width: 0.45; fill: none; }
+    </style>
+  </defs>
+
+  <text x="4" y="5" class="title">door-terminal 30◊20 mm (1:1)</text>
+  <text x="4" y="8.5" class="hint">M3 holes ∑ KF301 2P field side ∑ print 100%</text>
+
+  <!-- Board origin at (10, 15) so labels fit around it -->
+  <g transform="translate(10 15)">
+    <!-- Outline -->
+    <rect class="board" x="0" y="0" width="30" height="20" rx="0.8"/>
+
+    <!-- Mounting holes A (5,10), B (25,10)  ÿ3.2 -->
+    <circle class="hole" cx="5" cy="10" r="1.6"/>
+    <circle class="hole" cx="25" cy="10" r="1.6"/>
+    <text x="5" y="14.2" text-anchor="middle" class="dim">A</text>
+    <text x="25" y="14.2" text-anchor="middle" class="dim">B</text>
+
+    <!-- KF301 footprint on outer long edge (yH0, toward case wall) -->
+    <g transform="translate(6.5 -0.2)">
+      <rect class="term" x="0" y="-6.5" width="8.5" height="7" rx="0.4"/>
+      <rect class="term" x="8.5" y="-6.5" width="8.5" height="7" rx="0.4"/>
+      <circle class="screw" cx="4.25" cy="-3" r="1.4"/>
+      <circle class="screw" cx="12.75" cy="-3" r="1.4"/>
+      <text x="4.25" y="-7.2" text-anchor="middle" class="label">SIG</text>
+      <text x="12.75" y="-7.2" text-anchor="middle" class="label">GND</text>
+    </g>
+
+    <!-- Optional 1k series + pads toward Pi pigtail (inner edge) -->
+    <rect class="pad" x="3" y="16.2" width="3.5" height="2.5" rx="0.3"/>
+    <rect class="pad" x="23.5" y="16.2" width="3.5" height="2.5" rx="0.3"/>
+    <text x="4.75" y="19.5" text-anchor="middle" class="dim">íGPIO4</text>
+    <text x="25.25" y="19.5" text-anchor="middle" class="dim">íGND</text>
+
+    <path class="wire" d="M 10.75 0.5 V 8 H 4.75 V 16.2"/>
+    <path class="wire" d="M 19.25 0.5 V 8 H 25.25 V 16.2"/>
+
+    <!-- Optional R1 footprint -->
+    <rect x="6.5" y="7.2" width="5" height="1.8" rx="0.2" fill="#fffde7" stroke="#f9a825" stroke-width="0.25"/>
+    <text x="9" y="8.6" text-anchor="middle" class="dim">1k©?</text>
+
+    <!-- Dimension arrows -->
+    <line x1="0" y1="22" x2="30" y2="22" stroke="#555" stroke-width="0.2"/>
+    <text x="15" y="24.5" text-anchor="middle" class="dim">30 mm</text>
+    <line x1="32" y1="0" x2="32" y2="20" stroke="#555" stroke-width="0.2"/>
+    <text x="34" y="10.5" class="dim">20</text>
+    <line x1="5" y1="26.5" x2="25" y2="26.5" stroke="#555" stroke-width="0.2"/>
+    <text x="15" y="29" text-anchor="middle" class="dim">furos 20 mm c/c</text>
+  </g>
+
+  <text x="4" y="47" class="hint">Case wall ê top of drawing ∑ Pi pigtail ê bottom pads</text>
+</svg>
