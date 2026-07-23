@@ -112,7 +112,7 @@ func (s *Service) SetNow(fn func() time.Time) {
 
 func normalizeExitButton(cfg appconfig.ExitButtonConfig) appconfig.ExitButtonConfig {
 	if cfg.GPIOPin <= 0 {
-		cfg.GPIOPin = 5
+		cfg.GPIOPin = 18
 	}
 	if cfg.DebounceMs < 0 {
 		cfg.DebounceMs = 50

@@ -8,7 +8,7 @@ Layout mínimo para o **protótipo funcional**: bornes para fora da case, sem fi
 |----------------|--------|----------|
 | `LOCK` (borne do módulo relé) | Pulso da trava | GPIO **17** (IN do módulo) |
 | `DOOR` (2 vias) | Reed MC38 (contato seco) | GPIO **4** + **GND** |
-| `EXIT` (2 vias) | Botão de saída REX (momentâneo) | GPIO **5** + **GND** |
+| `EXIT` (2 vias) | Botão de saída REX (momentâneo) | GPIO **18** + **GND** |
 
 O pull-up do reed é **interno** no GPIO. Resistor série 1 kΩ no `DOOR SIG` é opcional (footprint na placa).
 
@@ -79,14 +79,14 @@ Centro a centro entre o bloco do relé e o do sensor: **≥ 25 mm** (dedo + ch
 
 ## Botão de saída (REX)
 
-Botão momentâneo **do lado de dentro** da porta. Contato seco entre `EXIT SIG` (GPIO **5**, pino físico 29) e `EXIT GND`. Pull-up interno; pressionado = LOW.
+Botão momentâneo **do lado de dentro** da porta. Contato seco entre `EXIT SIG` (GPIO **18**, pino físico 12) e `EXIT GND`. Pull-up interno; pressionado = LOW.
 
 No press: o agent notifica Identity (`POST /api/bridge/exit-button/events`) para abrir janela de graça e pulsa o **mesmo** relé `LOCK` (sem QR). O reed `opened` seguinte não deve gerar alerta de invasão.
 
 Wiring:
 
 ```
-Botão ──► EXIT SIG ──► GPIO 5
+Botão ──► EXIT SIG ──► GPIO 18
 Botão ──► EXIT GND ──► GND
 ```
 

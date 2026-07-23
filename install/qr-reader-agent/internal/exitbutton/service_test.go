@@ -28,7 +28,7 @@ func TestPressEmitsOnceAndCooldown(t *testing.T) {
 		DebounceMs: 0, // immediate commit on edge
 		CooldownMs: 500,
 		ActiveLow:  true,
-		GPIOPin:    5,
+		GPIOPin:    18,
 	}, func(ev Event) {
 		mu.Lock()
 		events = append(events, ev.Kind)
@@ -109,7 +109,7 @@ func TestSeedPressedDoesNotEmit(t *testing.T) {
 		DebounceMs: 10,
 		CooldownMs: 50,
 		ActiveLow:  true,
-		GPIOPin:    5,
+		GPIOPin:    18,
 	}, func(ev Event) {
 		mu.Lock()
 		events = append(events, ev.Kind)

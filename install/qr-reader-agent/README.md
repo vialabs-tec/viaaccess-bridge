@@ -42,7 +42,7 @@ PIN de fábrica (opcional): variável `SETUP_PIN` ou flag `--setup-pin`.
 ### Fluxo recomendado: QR zero-touch (sem SSH, sem GPIO no formulário)
 
 Um leitor novo é provisionado sem SSH e sem escolher pinos. O mapa elétrico de fábrica
-(relé GPIO 17, sensor porta GPIO 4, botão saída GPIO 5, LED R/G/B 22/27/23) é aplicado automaticamente no claim.
+(relé GPIO 17, sensor porta GPIO 4, botão saída GPIO 18, LED R/G/B 22/27/23) é aplicado automaticamente no claim.
 
 ```
 Admin (Identity)                    Appliance (rede local)
@@ -200,6 +200,7 @@ Mapa de fábrica (zero-touch):
 |--------|-----|--------|
 | Relé | 17 | `enabled`, pulso 3000 ms |
 | Sensor porta (MC38) | 4 | `activeLow` |
+| Botão saída (REX) | 18 | `activeLow`, pino físico 12 |
 | LED KY-016 R/G/B | 22 / 27 / 23 | status online / contingência / setup |
 
 Quando o Identity envia config nova:
@@ -358,7 +359,7 @@ Com `doorContact.enabled: true`, o agent observa um reed switch NF (ex.: MC38) e
 
 Padrão: **GPIO 4** (pino físico 7), GND no pino 9, `activeLow: true`
 (porta fechada = contato fechado = linha em LOW com pull-up).
-Evite os pinos do relé (17) e do LED KY-016 (22/27/23).
+Evite os pinos do relé (17), do reed (4), do botão de saída (18) e do LED KY-016 (22/27/23).
 
 | MC38 | Pi (BCM) | Physical |
 |------|----------|----------|
@@ -407,21 +408,21 @@ Fluxo:
    (o `opened` do reed seguinte **não** deve gerar alerta de invasão)
 3. Pulso do relé (e webhook de unlock, se configurado) — funciona mesmo se o Identity estiver offline
 
-Padrão: **GPIO 5** (pino físico 29), GND compartilhado, `activeLow: true`
+Padrão: **GPIO 18** (pino físico 12), GND compartilhado, `activeLow: true`
 (botão para GND = pressionado = LOW com pull-up).
 Evite os pinos do relé (17), do reed (4) e do LED KY-016 (22/27/23).
 
 | Botão | Pi (BCM) | Physical |
 |-------|----------|----------|
-| um fio | GPIO 5 | pin 29 |
-| outro fio | GND | pin 30 (ou 6 / 9 / 14 / 20) |
+| um fio | GPIO 18 | pin 12 |
+| outro fio | GND | pin 6 / 9 / 14 / 20 |
 
 Config JSON:
 
 ```json
 "exitButton": {
   "enabled": true,
-  "gpioPin": 5,
+  "gpioPin": 18,
   "activeLow": true,
   "debounceMs": 50,
   "cooldownMs": 3000,
@@ -429,7 +430,7 @@ Config JSON:
 }
 ```
 
-Env: `EXIT_BUTTON_*`. Zero-touch já habilita no GPIO 5; use **Configuração avançada** no `/setup` para pinos ou simulação.
+Env: `EXIT_BUTTON_*`. Zero-touch já habilita no GPIO 18; use **Configuração avançada** no `/setup` para pinos ou simulação.
 
 Homologação:
 

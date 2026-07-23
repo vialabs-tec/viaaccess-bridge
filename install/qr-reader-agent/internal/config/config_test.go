@@ -21,7 +21,7 @@ func TestFactoryHardwareDefaults(t *testing.T) {
 	if !cfg.DoorContact.Enabled || cfg.DoorContact.GPIOPin != 4 || !cfg.DoorContact.ActiveLow {
 		t.Fatalf("unexpected factory doorContact: %+v", cfg.DoorContact)
 	}
-	if !cfg.ExitButton.Enabled || cfg.ExitButton.GPIOPin != 5 || !cfg.ExitButton.ActiveLow || cfg.ExitButton.CooldownMs != 3000 {
+	if !cfg.ExitButton.Enabled || cfg.ExitButton.GPIOPin != 18 || !cfg.ExitButton.ActiveLow || cfg.ExitButton.CooldownMs != 3000 {
 		t.Fatalf("unexpected factory exitButton: %+v", cfg.ExitButton)
 	}
 	if !cfg.StatusLED.Enabled || cfg.StatusLED.RedPin != 22 || cfg.StatusLED.GreenPin != 27 || cfg.StatusLED.BluePin != 23 {

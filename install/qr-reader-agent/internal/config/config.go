@@ -136,7 +136,7 @@ func DefaultRuntimeConfig() RuntimeConfig {
 		},
 		ExitButton: ExitButtonConfig{
 			Enabled:    true,
-			GPIOPin:    5,
+			GPIOPin:    18,
 			ActiveLow:  true,
 			DebounceMs: 50,
 			CooldownMs: 3000,
@@ -224,7 +224,7 @@ func (c RuntimeConfig) Normalize() RuntimeConfig {
 		c.DoorContact.HeldOpenAfterMs = 60_000
 	}
 	if c.ExitButton.GPIOPin <= 0 {
-		c.ExitButton.GPIOPin = 5
+		c.ExitButton.GPIOPin = 18
 	}
 	if c.ExitButton.DebounceMs <= 0 {
 		c.ExitButton.DebounceMs = 50

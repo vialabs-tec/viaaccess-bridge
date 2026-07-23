@@ -29,7 +29,7 @@ func TestPreserveLocalHardwareKeepsFactoryOnFirstBoot(t *testing.T) {
 	if !got.DoorContact.Enabled || got.DoorContact.GPIOPin != 4 {
 		t.Fatalf("expected factory doorContact, got %+v", got.DoorContact)
 	}
-	if !got.ExitButton.Enabled || got.ExitButton.GPIOPin != 5 {
+	if !got.ExitButton.Enabled || got.ExitButton.GPIOPin != 18 {
 		t.Fatalf("expected factory exitButton, got %+v", got.ExitButton)
 	}
 	if !got.StatusLED.Enabled {
@@ -152,7 +152,7 @@ func TestHandleSaveZeroTouchUsesFactoryHardware(t *testing.T) {
 	if !saved.DoorContact.Enabled || saved.DoorContact.GPIOPin != 4 {
 		t.Fatalf("expected factory doorContact, got %+v", saved.DoorContact)
 	}
-	if !saved.ExitButton.Enabled || saved.ExitButton.GPIOPin != 5 {
+	if !saved.ExitButton.Enabled || saved.ExitButton.GPIOPin != 18 {
 		t.Fatalf("expected factory exitButton, got %+v", saved.ExitButton)
 	}
 	if !saved.StatusLED.Enabled {
