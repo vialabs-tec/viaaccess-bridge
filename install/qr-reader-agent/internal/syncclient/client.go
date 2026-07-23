@@ -24,6 +24,7 @@ type ClientConfig struct {
 	EmitDetection      bool
 	RelayEnabled       bool
 	DoorContactEnabled bool
+	ExitButtonEnabled  bool
 	AgentVersion       string
 	MdnsHostname       string
 }
@@ -57,6 +58,7 @@ func (c *Client) FetchPolicy(ctx context.Context) (policy.Snapshot, error) {
 	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
 	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
 	setDoorContactEnabledHeader(req, c.cfg.DoorContactEnabled)
+	setExitButtonEnabledHeader(req, c.cfg.ExitButtonEnabled)
 	setAgentVersionHeader(req, c.cfg.AgentVersion)
 	setMdnsHostnameHeader(req, c.cfg.MdnsHostname)
 

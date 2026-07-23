@@ -90,7 +90,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica (aplicado automaticamente)</strong><br />
-          Relé GPIO 17 · Sensor porta GPIO 4 · LED R/G/B 22/27/23
+          Relé GPIO 17 · Sensor porta GPIO 4 · Botão saída GPIO 5 · LED R/G/B 22/27/23
         </div>
         <details class="advanced" id="provision-advanced">
           <summary>Configuração avançada (GPIO / hostname LAN)</summary>
@@ -131,6 +131,20 @@
               <span>Simular (sem hardware, para homologação)</span>
             </label>
           </fieldset>
+          <fieldset>
+            <legend>Botão de saída (REX)</legend>
+            <label class="check">
+              <input name="exitButtonEnabled" type="checkbox" checked />
+              <span>Botão interno abre a porta sem QR (mesmo relé)</span>
+            </label>
+            <label>GPIO pin
+              <input name="exitButtonGpioPin" type="number" value="5" min="1" />
+            </label>
+            <label class="check">
+              <input name="exitButtonSimulated" type="checkbox" />
+              <span>Simular (sem hardware, para homologação)</span>
+            </label>
+          </fieldset>
         </details>
         <button type="submit">Provisionar</button>
         <div id="provision-msg" class="msg"></div>
@@ -153,7 +167,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica (aplicado automaticamente)</strong><br />
-          Relé GPIO 17 · Sensor porta GPIO 4 · LED R/G/B 22/27/23
+          Relé GPIO 17 · Sensor porta GPIO 4 · Botão saída GPIO 5 · LED R/G/B 22/27/23
         </div>
         <details class="advanced" id="manual-advanced">
           <summary>Configuração avançada (GPIO / hostname LAN)</summary>
@@ -194,6 +208,20 @@
               <span>Simular (sem hardware, para homologação)</span>
             </label>
           </fieldset>
+          <fieldset>
+            <legend>Botão de saída (REX)</legend>
+            <label class="check">
+              <input name="exitButtonEnabled" type="checkbox" checked />
+              <span>Botão interno abre a porta sem QR (mesmo relé)</span>
+            </label>
+            <label>GPIO pin
+              <input name="exitButtonGpioPin" type="number" value="5" min="1" />
+            </label>
+            <label class="check">
+              <input name="exitButtonSimulated" type="checkbox" />
+              <span>Simular (sem hardware, para homologação)</span>
+            </label>
+          </fieldset>
         </details>
         <label class="check">
           <input name="emitDetection" type="checkbox" checked />
@@ -224,6 +252,9 @@
         doorContactEnabled: fd.get('doorContactEnabled') === 'on',
         doorContactGpioPin: Number(fd.get('doorContactGpioPin') || 4),
         doorContactSimulated: fd.get('doorContactSimulated') === 'on',
+        exitButtonEnabled: fd.get('exitButtonEnabled') === 'on',
+        exitButtonGpioPin: Number(fd.get('exitButtonGpioPin') || 5),
+        exitButtonSimulated: fd.get('exitButtonSimulated') === 'on',
         ...(mdnsHostname ? { mdnsHostname } : {}),
       };
     }

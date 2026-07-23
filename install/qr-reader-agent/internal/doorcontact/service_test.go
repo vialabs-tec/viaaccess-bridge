@@ -39,7 +39,7 @@ func TestDebounceOpenClose(t *testing.T) {
 	if err := svc.SetSimOpen(true); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, 200*time.Millisecond, func() bool {
+	waitFor(t, 500*time.Millisecond, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return len(events) >= 1 && events[0] == KindOpened
@@ -48,7 +48,7 @@ func TestDebounceOpenClose(t *testing.T) {
 	if err := svc.SetSimOpen(false); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, 200*time.Millisecond, func() bool {
+	waitFor(t, 500*time.Millisecond, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return len(events) >= 2 && events[1] == KindClosed

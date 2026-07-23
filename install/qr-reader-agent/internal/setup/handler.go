@@ -26,6 +26,9 @@ type SaveRequest struct {
 	DoorContactEnabled   *bool  `json:"doorContactEnabled"`
 	DoorContactGPIOPin   *int   `json:"doorContactGpioPin"`
 	DoorContactSimulated *bool  `json:"doorContactSimulated"`
+	ExitButtonEnabled    *bool  `json:"exitButtonEnabled"`
+	ExitButtonGPIOPin    *int   `json:"exitButtonGpioPin"`
+	ExitButtonSimulated  *bool  `json:"exitButtonSimulated"`
 }
 
 type Handler struct {
@@ -89,7 +92,8 @@ func (h *Handler) HandleSave(w http.ResponseWriter, r *http.Request) {
 		cfg.Relay.PulseMs = *req.RelayPulseMs
 	}
 	doorFromRequest := applyDoorContactFromRequest(&cfg, req.DoorContactEnabled, req.DoorContactGPIOPin, req.DoorContactSimulated)
-	hardwareFromRequest := doorFromRequest || req.RelayEnabled != nil || req.RelayGPIOPin != nil || req.RelayPulseMs != nil
+	exitFromRequest := applyExitButtonFromRequest(&cfg, req.ExitButtonEnabled, req.ExitButtonGPIOPin, req.ExitButtonSimulated)
+	hardwareFromRequest := doorFromRequest || exitFromRequest || req.RelayEnabled != nil || req.RelayGPIOPin != nil || req.RelayPulseMs != nil
 	cfg.SetupPIN = strings.TrimSpace(h.PIN)
 	cfg = preserveLocalHardware(cfg, h.ConfigPath, hardwareFromRequest)
 	cfg = applyMDNSHostname(cfg, req.MdnsHostname)
@@ -178,7 +182,8 @@ func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
 		cfg.Relay.PulseMs = *req.RelayPulseMs
 	}
 	doorFromRequest := applyDoorContactFromRequest(&cfg, req.DoorContactEnabled, req.DoorContactGPIOPin, req.DoorContactSimulated)
-	hardwareFromRequest := doorFromRequest || req.RelayEnabled != nil || req.RelayGPIOPin != nil || req.RelayPulseMs != nil
+	exitFromRequest := applyExitButtonFromRequest(&cfg, req.ExitButtonEnabled, req.ExitButtonGPIOPin, req.ExitButtonSimulated)
+	hardwareFromRequest := doorFromRequest || exitFromRequest || req.RelayEnabled != nil || req.RelayGPIOPin != nil || req.RelayPulseMs != nil
 	cfg.SetupPIN = strings.TrimSpace(h.PIN)
 	cfg = preserveLocalHardware(cfg, h.ConfigPath, hardwareFromRequest)
 	cfg = applyMDNSHostname(cfg, req.MdnsHostname)
@@ -241,9 +246,10 @@ func preserveLocalHardware(cfg appconfig.RuntimeConfig, configPath string, hardw
 		}
 		return cfg
 	}
-	if existing.Relay.Enabled || existing.DoorContact.Enabled || existing.StatusLED.Enabled {
+	if existing.Relay.Enabled || existing.DoorContact.Enabled || existing.ExitButton.Enabled || existing.StatusLED.Enabled {
 		cfg.Relay = existing.Relay
 		cfg.DoorContact = existing.DoorContact
+		cfg.ExitButton = existing.ExitButton
 		cfg.StatusLED = existing.StatusLED
 	}
 	return cfg
@@ -266,6 +272,27 @@ func applyDoorContactFromRequest(
 	}
 	if simulated != nil {
 		cfg.DoorContact.Simulated = *simulated
+	}
+	return true
+}
+
+func applyExitButtonFromRequest(
+	cfg *appconfig.RuntimeConfig,
+	enabled *bool,
+	gpioPin *int,
+	simulated *bool,
+) bool {
+	if enabled == nil && gpioPin == nil && simulated == nil {
+		return false
+	}
+	if enabled != nil {
+		cfg.ExitButton.Enabled = *enabled
+	}
+	if gpioPin != nil && *gpioPin > 0 {
+		cfg.ExitButton.GPIOPin = *gpioPin
+	}
+	if simulated != nil {
+		cfg.ExitButton.Simulated = *simulated
 	}
 	return true
 }

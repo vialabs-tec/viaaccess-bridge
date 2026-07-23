@@ -21,6 +21,9 @@ func TestFactoryHardwareDefaults(t *testing.T) {
 	if !cfg.DoorContact.Enabled || cfg.DoorContact.GPIOPin != 4 || !cfg.DoorContact.ActiveLow {
 		t.Fatalf("unexpected factory doorContact: %+v", cfg.DoorContact)
 	}
+	if !cfg.ExitButton.Enabled || cfg.ExitButton.GPIOPin != 5 || !cfg.ExitButton.ActiveLow || cfg.ExitButton.CooldownMs != 3000 {
+		t.Fatalf("unexpected factory exitButton: %+v", cfg.ExitButton)
+	}
 	if !cfg.StatusLED.Enabled || cfg.StatusLED.RedPin != 22 || cfg.StatusLED.GreenPin != 27 || cfg.StatusLED.BluePin != 23 {
 		t.Fatalf("unexpected factory statusLed: %+v", cfg.StatusLED)
 	}
@@ -60,6 +63,9 @@ func TestApplyEnv(t *testing.T) {
 		"DOOR_CONTACT_ENABLED": "true",
 		"DOOR_CONTACT_GPIO_PIN": "5",
 		"DOOR_CONTACT_SIMULATED": "true",
+		"EXIT_BUTTON_ENABLED": "true",
+		"EXIT_BUTTON_GPIO_PIN": "6",
+		"EXIT_BUTTON_SIMULATED": "true",
 	}
 	cfg = ApplyEnv(cfg, env)
 	if !cfg.Configured || cfg.DeviceKey != "idb_from_env" {
@@ -76,5 +82,8 @@ func TestApplyEnv(t *testing.T) {
 	}
 	if !cfg.DoorContact.Enabled || cfg.DoorContact.GPIOPin != 5 || !cfg.DoorContact.Simulated {
 		t.Fatalf("unexpected doorContact: %+v", cfg.DoorContact)
+	}
+	if !cfg.ExitButton.Enabled || cfg.ExitButton.GPIOPin != 6 || !cfg.ExitButton.Simulated {
+		t.Fatalf("unexpected exitButton: %+v", cfg.ExitButton)
 	}
 }

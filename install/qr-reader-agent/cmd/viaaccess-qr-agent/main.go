@@ -18,6 +18,7 @@ import (
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/doorcontact"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/exitbutton"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/hidwedge"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/mdns"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
@@ -102,6 +103,12 @@ func main() {
 	}
 	defer doorContact.Close()
 
+	exitButton, err := exitbutton.NewService(cfg.ExitButton, nil)
+	if err != nil {
+		log.Fatalf("exitbutton: %v", err)
+	}
+	defer exitButton.Close()
+
 	mdnsAdv, err := mdns.Start(mdns.Config{
 		Enabled:  cfg.MDNS.Enabled,
 		Hostname: cfg.MDNS.Hostname,
@@ -163,6 +170,7 @@ func main() {
 		Nonce:        nonceStore,
 		RelayService: relayService,
 		DoorContact:  doorContact,
+		ExitButton:   exitButton,
 		StartScanners: func() {
 			startScanInputs(ctx, app, policyHolder, outboxStore, nonceStore, relayService, state, *stdinMode, *hidDevice, *hidAuto)
 		},

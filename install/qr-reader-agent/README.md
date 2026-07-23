@@ -2,7 +2,7 @@
 
 Daemon de borda para o **appliance ViaAccess QR Reader**: lê QR dinâmico do Identity, faz `POST /api/bridge/intent/redeem`, opcionalmente aciona relé GPIO e webhook de unlock.
 
-Runtime de produção no Raspberry Pi (setup UI, policy sync, OTA, door contact, systemd).
+Runtime de produção no Raspberry Pi (setup UI, policy sync, OTA, door contact, exit button, systemd).
 
 ```
 Celular (PWA) → QR → leitor USB/HTTP → viaaccess-qr-agent → Identity → ViaAccess
@@ -42,7 +42,7 @@ PIN de fábrica (opcional): variável `SETUP_PIN` ou flag `--setup-pin`.
 ### Fluxo recomendado: QR zero-touch (sem SSH, sem GPIO no formulário)
 
 Um leitor novo é provisionado sem SSH e sem escolher pinos. O mapa elétrico de fábrica
-(relé GPIO 17, sensor porta GPIO 4, LED R/G/B 22/27/23) é aplicado automaticamente no claim.
+(relé GPIO 17, sensor porta GPIO 4, botão saída GPIO 5, LED R/G/B 22/27/23) é aplicado automaticamente no claim.
 
 ```
 Admin (Identity)                    Appliance (rede local)
@@ -347,7 +347,7 @@ curl -s -X POST http://127.0.0.1:3710/scan \
 
 Com `relay.enabled: true` no config, o agent pulsa a linha em `gpiochip0` no offset configurado (`relayGpioPin`). Em Raspberry Pi, confira o offset com `gpioinfo` (BCM 17 nem sempre é offset 17).
 
-O relé só dispara quando o redeem retorna `correlationOutcome: AUTHORIZED` (padrão `unlockOnAuthorizedOnly: true`). Regras do ViaAccess no ponto, como **`after_hours`**, bloqueiam a autorização fora do horário (online e offline via `edgePolicy` no policy snapshot). O mesmo vale para VACP em `authorized_entry`.
+O relé só dispara quando o redeem retorna `correlationOutcome: AUTHORIZED` (padrão `unlockOnAuthorizedOnly: true`), **ou** no botão de saída (REX) / comando remoto `UNLOCK`. Regras do ViaAccess no ponto, como **`after_hours`**, bloqueiam a autorização fora do horário (online e offline via `edgePolicy` no policy snapshot). O mesmo vale para VACP em `authorized_entry`. O REX **não** passa por validação de membro.
 
 Em desenvolvimento (macOS) ou sem GPIO, usa driver simulado (log).
 
@@ -394,6 +394,56 @@ curl -s -X POST http://127.0.0.1:3710/api/door-contact/sim -d '{"state":"closed"
 ```
 
 `/health` inclui `doorContact: { enabled, state, simulated }`.
+
+## Botão de saída (REX / Request-to-Exit)
+
+Com `exitButton.enabled: true`, um botão momentâneo **do lado de dentro** abre a porta
+sem QR: notifica Identity e pulsa o **mesmo** relé `LOCK`.
+
+Fluxo:
+
+1. Debounce do press (GPIO) → evento `pressed`
+2. `POST /api/bridge/exit-button/events` `{ kind, at }` — Identity abre janela de graça
+   (o `opened` do reed seguinte **não** deve gerar alerta de invasão)
+3. Pulso do relé (e webhook de unlock, se configurado) — funciona mesmo se o Identity estiver offline
+
+Padrão: **GPIO 5** (pino físico 29), GND compartilhado, `activeLow: true`
+(botão para GND = pressionado = LOW com pull-up).
+Evite os pinos do relé (17), do reed (4) e do LED KY-016 (22/27/23).
+
+| Botão | Pi (BCM) | Physical |
+|-------|----------|----------|
+| um fio | GPIO 5 | pin 29 |
+| outro fio | GND | pin 30 (ou 6 / 9 / 14 / 20) |
+
+Config JSON:
+
+```json
+"exitButton": {
+  "enabled": true,
+  "gpioPin": 5,
+  "activeLow": true,
+  "debounceMs": 50,
+  "cooldownMs": 3000,
+  "simulated": false
+}
+```
+
+Env: `EXIT_BUTTON_*`. Zero-touch já habilita no GPIO 5; use **Configuração avançada** no `/setup` para pinos ou simulação.
+
+Homologação:
+
+```bash
+curl -s -X POST http://127.0.0.1:3710/api/exit-button/sim -d '{"state":"pressed"}'
+curl -s -X POST http://127.0.0.1:3710/api/exit-button/sim -d '{"state":"idle"}'
+```
+
+`/health` inclui `exitButton: { enabled, state, simulated, gpioPin }`.
+
+**Identity (necessário):** endpoint `POST /api/bridge/exit-button/events` deve registrar a saída
+e abrir a mesma janela de correlação usada após redeem/`UNLOCK`, para que
+`door-contact` `opened` não dispare alerta de invasão. `held_open` continua válido.
+Detalhes: [`docs/exit-button-identity.md`](docs/exit-button-identity.md).
 
 ## Status LED KY-016 (SETUP / ONLINE / SYNC_STALE)
 
@@ -504,10 +554,11 @@ journalctl -u viaaccess-qr-agent -u viaaccess-qr-agent-health -f
 | Revogação → setup | `internal/server/app.go` (hot reload) |
 | Status LED | `internal/statusled` |
 | Door contact (MC38) | `internal/doorcontact` |
+| Exit button (REX) | `internal/exitbutton` |
 | Fleet OTA | `scripts/install.sh`, Identity enqueue |
 | Install + health boot | `scripts/install.sh`, `*-health.service` |
 
 ## Ver também
 
-- Identity: `GET /api/bridge/device-config`, `POST /api/bridge/provision/claim`, `POST /api/bridge/intent/redeem`, `POST /api/bridge/door-contact/events` — OpenAPI em viaaccess-identity
+- Identity: `GET /api/bridge/device-config`, `POST /api/bridge/provision/claim`, `POST /api/bridge/intent/redeem`, `POST /api/bridge/door-contact/events`, `POST /api/bridge/exit-button/events` — OpenAPI em viaaccess-identity
 - [identity-qr-bridge.md](https://github.com/vialabs-tec/viaaccess-identity/blob/main/docs/installation/identity-qr-bridge.md)

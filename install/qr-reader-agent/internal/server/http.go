@@ -13,6 +13,7 @@ import (
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/doorcontact"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/exitbutton"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/redeem"
@@ -40,6 +41,7 @@ type Options struct {
 	OnConfigSaved  func(cfg appconfig.RuntimeConfig) error
 	RelayService   *relay.Service
 	DoorContact    *doorcontact.Service
+	ExitButton     *exitbutton.Service
 }
 
 func NewMux(opts Options) http.Handler {
@@ -75,6 +77,9 @@ func NewMux(opts Options) http.Handler {
 		if opts.DoorContact != nil && opts.DoorContact.Simulated() {
 			mux.HandleFunc("POST /api/door-contact/sim", doorContactSimHandler(opts.DoorContact))
 		}
+		if opts.ExitButton != nil && opts.ExitButton.Simulated() {
+			mux.HandleFunc("POST /api/exit-button/sim", exitButtonSimHandler(opts.ExitButton))
+		}
 		return mux
 	}
 
@@ -96,15 +101,15 @@ func NewMux(opts Options) http.Handler {
 	}
 
 	handler := &scan.Handler{
-		Config:        opts.Config,
-		Redeem:        redeemClient,
-		Unlock:        unlockClient,
-		Relay:         relayPulser,
-		Debounce:      debounce,
-		Policy:        opts.Policy,
-		OperationMode: opts.OperationMode,
-		Outbox:        opts.Outbox,
-		Nonce:         opts.Nonce,
+		Config:         opts.Config,
+		Redeem:         redeemClient,
+		Unlock:         unlockClient,
+		Relay:          relayPulser,
+		Debounce:       debounce,
+		Policy:         opts.Policy,
+		OperationMode:  opts.OperationMode,
+		Outbox:         opts.Outbox,
+		Nonce:          opts.Nonce,
 		OnScanComplete: opts.OnScanComplete,
 	}
 
@@ -129,6 +134,9 @@ func NewMux(opts Options) http.Handler {
 
 	if opts.DoorContact != nil && opts.DoorContact.Simulated() {
 		mux.HandleFunc("POST /api/door-contact/sim", doorContactSimHandler(opts.DoorContact))
+	}
+	if opts.ExitButton != nil && opts.ExitButton.Simulated() {
+		mux.HandleFunc("POST /api/exit-button/sim", exitButtonSimHandler(opts.ExitButton))
 	}
 
 	return mux
@@ -163,6 +171,42 @@ func doorContactSimHandler(svc *doorcontact.Service) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]any{
 				"ok":    false,
 				"error": "state must be open or closed",
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "state": body.State})
+	}
+}
+
+func exitButtonSimHandler(svc *exitbutton.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid body"})
+			return
+		}
+		var body struct {
+			State string `json:"state"`
+		}
+		if err := json.Unmarshal(raw, &body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid json"})
+			return
+		}
+		switch strings.ToLower(strings.TrimSpace(body.State)) {
+		case "pressed", "press":
+			if err := svc.SetSimPressed(true); err != nil {
+				writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": err.Error()})
+				return
+			}
+		case "idle", "released", "release":
+			if err := svc.SetSimPressed(false); err != nil {
+				writeJSON(w, http.StatusConflict, map[string]any{"ok": false, "error": err.Error()})
+				return
+			}
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"ok":    false,
+				"error": "state must be pressed or idle",
 			})
 			return
 		}

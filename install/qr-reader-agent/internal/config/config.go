@@ -13,27 +13,29 @@ const DefaultHTTPPort = 3710
 
 // RuntimeConfig is persisted on the appliance after setup.
 type RuntimeConfig struct {
-	Configured bool   `json:"configured"`
-	IdentityURL string `json:"identityUrl"`
-	DeviceKey   string `json:"deviceKey"`
-	DeviceID    string `json:"deviceId,omitempty"`
-	ProvisionedAt string `json:"provisionedAt,omitempty"`
+	Configured      bool   `json:"configured"`
+	IdentityURL     string `json:"identityUrl"`
+	DeviceKey       string `json:"deviceKey"`
+	DeviceID        string `json:"deviceId,omitempty"`
+	ProvisionedAt   string `json:"provisionedAt,omitempty"`
 	AccessPointSlug string `json:"accessPointSlug,omitempty"`
-	EmitDetection bool `json:"emitDetection"`
-	DebounceMs int `json:"debounceMs"`
+	EmitDetection   bool   `json:"emitDetection"`
+	DebounceMs      int    `json:"debounceMs"`
 
 	HTTPHost string `json:"httpHost"`
 	HTTPPort int    `json:"httpPort"`
 
-	WebhookSecret string `json:"webhookSecret,omitempty"`
-	UnlockWebhookURL string `json:"unlockWebhookUrl,omitempty"`
-	UnlockOnAuthorizedOnly bool `json:"unlockOnAuthorizedOnly"`
+	WebhookSecret          string `json:"webhookSecret,omitempty"`
+	UnlockWebhookURL       string `json:"unlockWebhookUrl,omitempty"`
+	UnlockOnAuthorizedOnly bool   `json:"unlockOnAuthorizedOnly"`
 
 	Relay RelayConfig `json:"relay"`
 
 	StatusLED StatusLEDConfig `json:"statusLed"`
 
 	DoorContact DoorContactConfig `json:"doorContact"`
+
+	ExitButton ExitButtonConfig `json:"exitButton"`
 
 	MDNS MDNSConfig `json:"mdns"`
 
@@ -43,13 +45,13 @@ type RuntimeConfig struct {
 }
 
 type ContingencyConfig struct {
-	Enabled              bool `json:"enabled"`
-	OnlineRedeemTimeoutMs int `json:"onlineRedeemTimeoutMs"`
-	MaxPolicyStaleHours  int  `json:"maxPolicyStaleHours"`
+	Enabled               bool `json:"enabled"`
+	OnlineRedeemTimeoutMs int  `json:"onlineRedeemTimeoutMs"`
+	MaxPolicyStaleHours   int  `json:"maxPolicyStaleHours"`
 }
 
 type RelayConfig struct {
-	Enabled    bool `json:"enabled"`
+	Enabled    bool   `json:"enabled"`
 	GPIOLine   string `json:"gpioLine,omitempty"`
 	GPIOPin    int    `json:"gpioPin,omitempty"`
 	PulseMs    int    `json:"pulseMs"`
@@ -64,6 +66,21 @@ type DoorContactConfig struct {
 	ActiveLow       bool `json:"activeLow"`
 	DebounceMs      int  `json:"debounceMs"`
 	HeldOpenAfterMs int  `json:"heldOpenAfterMs"`
+	// Simulated forces the in-memory driver (also used when GPIO is unavailable).
+	Simulated bool `json:"simulated"`
+}
+
+// ExitButtonConfig watches a momentary Request-to-Exit button on GPIO.
+// Default activeLow=true: press to GND pulls the line LOW (pull-up).
+// On press the appliance pulses the lock relay (no QR) and notifies Identity
+// so the following door-contact opened is not treated as forced entry.
+type ExitButtonConfig struct {
+	Enabled    bool `json:"enabled"`
+	GPIOPin    int  `json:"gpioPin,omitempty"`
+	ActiveLow  bool `json:"activeLow"`
+	DebounceMs int  `json:"debounceMs"`
+	// CooldownMs suppresses re-fires while the button is held or tapped rapidly.
+	CooldownMs int `json:"cooldownMs"`
 	// Simulated forces the in-memory driver (also used when GPIO is unavailable).
 	Simulated bool `json:"simulated"`
 }
@@ -117,6 +134,14 @@ func DefaultRuntimeConfig() RuntimeConfig {
 			HeldOpenAfterMs: 60_000,
 			Simulated:       false,
 		},
+		ExitButton: ExitButtonConfig{
+			Enabled:    true,
+			GPIOPin:    5,
+			ActiveLow:  true,
+			DebounceMs: 50,
+			CooldownMs: 3000,
+			Simulated:  false,
+		},
 		MDNS: MDNSConfig{
 			Enabled:  true,
 			Hostname: "viaaccess-qr",
@@ -146,6 +171,9 @@ func LoadFromFile(path string) (RuntimeConfig, error) {
 	if err := json.Unmarshal(data, &raw); err == nil {
 		if _, ok := raw["mdns"]; !ok {
 			cfg.MDNS = DefaultRuntimeConfig().MDNS
+		}
+		if _, ok := raw["exitButton"]; !ok {
+			cfg.ExitButton = DefaultRuntimeConfig().ExitButton
 		}
 	}
 	return cfg.Normalize(), nil
@@ -194,6 +222,15 @@ func (c RuntimeConfig) Normalize() RuntimeConfig {
 	}
 	if c.DoorContact.HeldOpenAfterMs <= 0 {
 		c.DoorContact.HeldOpenAfterMs = 60_000
+	}
+	if c.ExitButton.GPIOPin <= 0 {
+		c.ExitButton.GPIOPin = 5
+	}
+	if c.ExitButton.DebounceMs <= 0 {
+		c.ExitButton.DebounceMs = 50
+	}
+	if c.ExitButton.CooldownMs <= 0 {
+		c.ExitButton.CooldownMs = 3000
 	}
 	if strings.TrimSpace(c.MDNS.Hostname) == "" {
 		c.MDNS.Hostname = "viaaccess-qr"
@@ -354,6 +391,35 @@ func ApplyEnv(cfg RuntimeConfig, env map[string]string) RuntimeConfig {
 	}
 	if v := strings.TrimSpace(get("DOOR_CONTACT_SIMULATED")); v == "true" {
 		cfg.DoorContact.Simulated = true
+	}
+	if v := strings.TrimSpace(get("EXIT_BUTTON_ENABLED")); v == "true" {
+		cfg.ExitButton.Enabled = true
+	} else if v == "false" {
+		cfg.ExitButton.Enabled = false
+	}
+	if v := strings.TrimSpace(get("EXIT_BUTTON_GPIO_PIN")); v != "" {
+		var pin int
+		if _, err := fmt.Sscanf(v, "%d", &pin); err == nil && pin > 0 {
+			cfg.ExitButton.GPIOPin = pin
+		}
+	}
+	if v := strings.TrimSpace(get("EXIT_BUTTON_ACTIVE_LOW")); v == "false" {
+		cfg.ExitButton.ActiveLow = false
+	}
+	if v := strings.TrimSpace(get("EXIT_BUTTON_DEBOUNCE_MS")); v != "" {
+		var ms int
+		if _, err := fmt.Sscanf(v, "%d", &ms); err == nil && ms > 0 {
+			cfg.ExitButton.DebounceMs = ms
+		}
+	}
+	if v := strings.TrimSpace(get("EXIT_BUTTON_COOLDOWN_MS")); v != "" {
+		var ms int
+		if _, err := fmt.Sscanf(v, "%d", &ms); err == nil && ms > 0 {
+			cfg.ExitButton.CooldownMs = ms
+		}
+	}
+	if v := strings.TrimSpace(get("EXIT_BUTTON_SIMULATED")); v == "true" {
+		cfg.ExitButton.Simulated = true
 	}
 	if v := strings.TrimSpace(get("MDNS_ENABLED")); v == "false" {
 		cfg.MDNS.Enabled = false

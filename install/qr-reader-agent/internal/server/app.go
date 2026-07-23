@@ -16,12 +16,15 @@ import (
 	appconfig "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/config"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/contingency"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/doorcontact"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/exitbutton"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/ota"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/outbox"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/policy"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/redeem"
 	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/relay"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/scan"
 	syncclient "github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/syncclient"
+	"github.com/vialabs-tec/viaaccess-bridge/qr-reader-agent/internal/unlock"
 )
 
 // App owns HTTP routing and switches between setup and operational modes at runtime.
@@ -36,17 +39,19 @@ type App struct {
 	policyPath string
 	setupPIN   string
 
-	cfg           appconfig.RuntimeConfig
-	state         *agent.State
-	policyHolder  *policy.Holder
-	outbox        *outbox.Store
-	nonce         *contingency.NonceStore
-	relayService  *relay.Service
-	doorContact   *doorcontact.Service
-	syncCancel    context.CancelFunc
-	probeCancel   context.CancelFunc
-	commandCancel context.CancelFunc
-	doorCancel    context.CancelFunc
+	cfg              appconfig.RuntimeConfig
+	state            *agent.State
+	policyHolder     *policy.Holder
+	outbox           *outbox.Store
+	nonce            *contingency.NonceStore
+	relayService     *relay.Service
+	doorContact      *doorcontact.Service
+	exitButton       *exitbutton.Service
+	syncCancel       context.CancelFunc
+	probeCancel      context.CancelFunc
+	commandCancel    context.CancelFunc
+	doorCancel       context.CancelFunc
+	exitCancel       context.CancelFunc
 	deviceConfigETag string
 
 	// startScanners runs once when the appliance becomes operational (boot or hot provision).
@@ -68,6 +73,7 @@ type AppDeps struct {
 	Nonce        *contingency.NonceStore
 	RelayService *relay.Service
 	DoorContact  *doorcontact.Service
+	ExitButton   *exitbutton.Service
 	// StartScanners starts HID/stdin readers. Called once on enter-operational (boot or provision).
 	StartScanners func()
 	// OnMDNSHostnameChanged restarts LAN advertise when hostname changes after provision/save.
@@ -87,12 +93,17 @@ func NewApp(deps AppDeps) *App {
 		nonce:                 deps.Nonce,
 		relayService:          deps.RelayService,
 		doorContact:           deps.DoorContact,
+		exitButton:            deps.ExitButton,
 		startScanners:         deps.StartScanners,
 		onMDNSHostnameChanged: deps.OnMDNSHostnameChanged,
 	}
 	if app.doorContact != nil {
 		app.doorContact.SetEventHandler(app.onDoorContactEvent)
 		app.state.SetDoorContactSnapshot(app.doorContact.Snapshot)
+	}
+	if app.exitButton != nil {
+		app.exitButton.SetEventHandler(app.onExitButtonEvent)
+		app.state.SetExitButtonSnapshot(app.exitButton.Snapshot)
 	}
 	app.rebuildHandlerLocked()
 	if app.cfg.Configured {
@@ -131,6 +142,12 @@ func (a *App) SaveConfig(cfg appconfig.RuntimeConfig) error {
 			log.Printf("doorcontact apply: %v", err)
 		}
 		a.state.SetDoorContactSnapshot(a.doorContact.Snapshot)
+	}
+	if a.exitButton != nil {
+		if err := a.exitButton.ApplyConfig(cfg.ExitButton); err != nil {
+			log.Printf("exitbutton apply: %v", err)
+		}
+		a.state.SetExitButtonSnapshot(a.exitButton.Snapshot)
 	}
 	if cfg.Configured {
 		a.state.SetConfigured(true)
@@ -193,14 +210,14 @@ func (a *App) onBridgeUnauthorized(reason string) {
 
 func (a *App) rebuildHandlerLocked() {
 	a.handler = NewMux(Options{
-		Config:       a.cfg,
-		ConfigPath:   a.configPath,
-		SetupPIN:     a.setupPIN,
-		State:        a.state.Snapshot,
-		Policy:       a.policyHolder.Get,
+		Config:        a.cfg,
+		ConfigPath:    a.configPath,
+		SetupPIN:      a.setupPIN,
+		State:         a.state.Snapshot,
+		Policy:        a.policyHolder.Get,
 		OperationMode: a.state.OperationMode,
-		Outbox:       a.outbox,
-		Nonce:        a.nonce,
+		Outbox:        a.outbox,
+		Nonce:         a.nonce,
 		OnScanComplete: func(path agent.ScanPath, qrURL string, result redeem.Result) {
 			a.state.RecordScan(path, result)
 			log.Printf("[%s] %s", path, redeem.FormatLog(result))
@@ -211,6 +228,7 @@ func (a *App) rebuildHandlerLocked() {
 		OnConfigSaved: a.SaveConfig,
 		RelayService:  a.relayService,
 		DoorContact:   a.doorContact,
+		ExitButton:    a.exitButton,
 	})
 }
 
@@ -237,6 +255,11 @@ func (a *App) startBackgroundWorkersLocked() {
 		a.doorCancel = doorCancel
 		go a.doorContact.Run(doorCtx)
 	}
+	if a.exitButton != nil && a.exitButton.Enabled() {
+		exitCtx, exitCancel := context.WithCancel(a.rootCtx)
+		a.exitCancel = exitCancel
+		go a.exitButton.Run(exitCtx)
+	}
 }
 
 func (a *App) stopBackgroundWorkersLocked() {
@@ -256,6 +279,10 @@ func (a *App) stopBackgroundWorkersLocked() {
 		a.doorCancel()
 		a.doorCancel = nil
 	}
+	if a.exitCancel != nil {
+		a.exitCancel()
+		a.exitCancel = nil
+	}
 }
 
 func (a *App) onDoorContactEvent(ev doorcontact.Event) {
@@ -263,15 +290,7 @@ func (a *App) onDoorContactEvent(ev doorcontact.Event) {
 	if !cfg.Configured || !cfg.DoorContact.Enabled {
 		return
 	}
-	client := syncclient.NewClient(syncclient.ClientConfig{
-		IdentityURL:        cfg.IdentityURL,
-		DeviceKey:          cfg.DeviceKey,
-		EmitDetection:      cfg.EmitDetection,
-		RelayEnabled:       cfg.Relay.Enabled,
-		DoorContactEnabled: cfg.DoorContact.Enabled,
-		AgentVersion:       buildinfo.Version,
-		MdnsHostname:       cfg.MDNS.Hostname,
-	}, nil)
+	client := syncclient.NewClient(a.bridgeClientConfig(cfg), nil)
 	ctx, cancel := context.WithTimeout(a.rootCtx, 12*time.Second)
 	defer cancel()
 	if err := client.PostDoorContactEvent(ctx, syncclient.DoorContactEvent{
@@ -286,6 +305,72 @@ func (a *App) onDoorContactEvent(ev doorcontact.Event) {
 		return
 	}
 	log.Printf("door-contact: %s", ev.Kind)
+}
+
+// onExitButtonEvent handles Request-to-Exit: notify Identity (grace window), then pulse lock.
+// Unlock is local-first so egress still works offline; Identity POST is best-effort with a short timeout.
+func (a *App) onExitButtonEvent(ev exitbutton.Event) {
+	cfg := a.Config()
+	if !cfg.Configured || !cfg.ExitButton.Enabled {
+		return
+	}
+	if ev.Kind != exitbutton.KindPressed {
+		return
+	}
+
+	client := syncclient.NewClient(a.bridgeClientConfig(cfg), nil)
+	notifyCtx, notifyCancel := context.WithTimeout(a.rootCtx, 2*time.Second)
+	if err := client.PostExitButtonEvent(notifyCtx, syncclient.ExitButtonEvent{
+		Kind: string(ev.Kind),
+		At:   ev.At,
+	}); err != nil {
+		if errors.Is(err, syncclient.ErrBridgeUnauthorized) {
+			notifyCancel()
+			a.onBridgeUnauthorized("exit-button rejected device key")
+			return
+		}
+		log.Printf("exit-button notify failed (continuing unlock): %v", err)
+	} else {
+		log.Printf("exit-button: pressed notified")
+	}
+	notifyCancel()
+
+	pulseCtx, pulseCancel := context.WithTimeout(a.rootCtx, 12*time.Second)
+	defer pulseCancel()
+
+	if cfg.UnlockWebhookURL != "" {
+		unlockClient := unlock.NewClient(cfg.UnlockWebhookURL, nil)
+		result := unlockClient.PostUnlock(pulseCtx, scan.UnlockPayload{
+			CorrelationOutcome: "EXIT_REQUEST",
+			AccessPointSlug:    cfg.AccessPointSlug,
+		})
+		if !result.OK {
+			log.Printf("exit-button unlock webhook failed: %s", result.Error)
+		}
+	}
+
+	if !cfg.Relay.Enabled || a.relayService == nil {
+		log.Printf("exit-button pressed — relay disabled")
+		return
+	}
+	if err := a.relayService.Pulse(pulseCtx); err != nil {
+		log.Printf("exit-button relay pulse failed: %v", err)
+		return
+	}
+	log.Printf("exit-button: relay pulsed")
+}
+
+func (a *App) bridgeClientConfig(cfg appconfig.RuntimeConfig) syncclient.ClientConfig {
+	return syncclient.ClientConfig{
+		IdentityURL:        cfg.IdentityURL,
+		DeviceKey:          cfg.DeviceKey,
+		EmitDetection:      cfg.EmitDetection,
+		RelayEnabled:       cfg.Relay.Enabled,
+		DoorContactEnabled: cfg.DoorContact.Enabled,
+		ExitButtonEnabled:  cfg.ExitButton.Enabled,
+		AgentVersion:       buildinfo.Version,
+		MdnsHostname:       cfg.MDNS.Hostname,
+	}
 }
 
 func (a *App) probeIdentity(ctx context.Context) {
@@ -315,30 +400,14 @@ func (a *App) pingIdentity(ctx context.Context) error {
 
 func (a *App) runSyncLoop(ctx context.Context) {
 	cfg := a.Config()
-	client := syncclient.NewClient(syncclient.ClientConfig{
-		IdentityURL:        cfg.IdentityURL,
-		DeviceKey:          cfg.DeviceKey,
-		EmitDetection:      cfg.EmitDetection,
-		RelayEnabled:       cfg.Relay.Enabled,
-		DoorContactEnabled: cfg.DoorContact.Enabled,
-		AgentVersion:       buildinfo.Version,
-		MdnsHostname:       cfg.MDNS.Hostname,
-	}, nil)
+	client := syncclient.NewClient(a.bridgeClientConfig(cfg), nil)
 
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
 
 	syncOnce := func() {
 		current := a.Config()
-		client = syncclient.NewClient(syncclient.ClientConfig{
-			IdentityURL:        current.IdentityURL,
-			DeviceKey:          current.DeviceKey,
-			EmitDetection:      current.EmitDetection,
-			RelayEnabled:       current.Relay.Enabled,
-			DoorContactEnabled: current.DoorContact.Enabled,
-			AgentVersion:       buildinfo.Version,
-			MdnsHostname:       current.MDNS.Hostname,
-		}, nil)
+		client = syncclient.NewClient(a.bridgeClientConfig(current), nil)
 
 		syncCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
@@ -470,15 +539,7 @@ func (a *App) pollCommandsOnce(ctx context.Context, idle, fast time.Duration) ti
 	if !cfg.Configured || strings.TrimSpace(cfg.DeviceKey) == "" {
 		return idle
 	}
-	client := syncclient.NewClient(syncclient.ClientConfig{
-		IdentityURL:        cfg.IdentityURL,
-		DeviceKey:          cfg.DeviceKey,
-		EmitDetection:      cfg.EmitDetection,
-		RelayEnabled:       cfg.Relay.Enabled,
-		DoorContactEnabled: cfg.DoorContact.Enabled,
-		AgentVersion:       buildinfo.Version,
-		MdnsHostname:       cfg.MDNS.Hostname,
-	}, nil)
+	client := syncclient.NewClient(a.bridgeClientConfig(cfg), nil)
 
 	pollCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
