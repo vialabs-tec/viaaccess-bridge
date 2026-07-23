@@ -29,6 +29,9 @@ func TestPreserveLocalHardwareKeepsFactoryOnFirstBoot(t *testing.T) {
 	if !got.DoorContact.Enabled || got.DoorContact.GPIOPin != 4 {
 		t.Fatalf("expected factory doorContact, got %+v", got.DoorContact)
 	}
+	if !got.ExitButton.Enabled || got.ExitButton.GPIOPin != 5 {
+		t.Fatalf("expected factory exitButton, got %+v", got.ExitButton)
+	}
 	if !got.StatusLED.Enabled {
 		t.Fatalf("expected factory statusLed enabled, got %+v", got.StatusLED)
 	}
@@ -43,6 +46,8 @@ func TestPreserveLocalHardwareKeepsPriorWiringOnReprovision(t *testing.T) {
 	existing.Relay.GPIOPin = 27
 	existing.DoorContact.Enabled = true
 	existing.DoorContact.GPIOPin = 5
+	existing.ExitButton.Enabled = true
+	existing.ExitButton.GPIOPin = 6
 	existing.StatusLED.Enabled = true
 	existing.StatusLED.RedPin = 9
 	if err := appconfig.SaveToFile(path, existing); err != nil {
@@ -51,8 +56,8 @@ func TestPreserveLocalHardwareKeepsPriorWiringOnReprovision(t *testing.T) {
 
 	cfg := appconfig.DefaultRuntimeConfig()
 	got := preserveLocalHardware(cfg, path, false)
-	if got.Relay.GPIOPin != 27 || got.DoorContact.GPIOPin != 5 || got.StatusLED.RedPin != 9 {
-		t.Fatalf("expected prior wiring preserved, got relay=%+v door=%+v led=%+v", got.Relay, got.DoorContact, got.StatusLED)
+	if got.Relay.GPIOPin != 27 || got.DoorContact.GPIOPin != 5 || got.ExitButton.GPIOPin != 6 || got.StatusLED.RedPin != 9 {
+		t.Fatalf("expected prior wiring preserved, got relay=%+v door=%+v exit=%+v led=%+v", got.Relay, got.DoorContact, got.ExitButton, got.StatusLED)
 	}
 }
 
@@ -146,6 +151,9 @@ func TestHandleSaveZeroTouchUsesFactoryHardware(t *testing.T) {
 	}
 	if !saved.DoorContact.Enabled || saved.DoorContact.GPIOPin != 4 {
 		t.Fatalf("expected factory doorContact, got %+v", saved.DoorContact)
+	}
+	if !saved.ExitButton.Enabled || saved.ExitButton.GPIOPin != 5 {
+		t.Fatalf("expected factory exitButton, got %+v", saved.ExitButton)
 	}
 	if !saved.StatusLED.Enabled {
 		t.Fatalf("expected factory statusLed, got %+v", saved.StatusLED)

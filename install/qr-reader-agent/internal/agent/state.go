@@ -33,15 +33,16 @@ type State struct {
 	relaySimulated    bool
 	statusLEDSnap     func() map[string]any
 	doorContactSnap   func() map[string]any
+	exitButtonSnap    func() map[string]any
 	mdnsSnap          func() map[string]any
 
 	policy policy.Snapshot
 	outbox *outbox.Store
 
-	lastScanAt    time.Time
-	lastScanPath  ScanPath
-	lastOutcome   string
-	lastError     string
+	lastScanAt   time.Time
+	lastScanPath ScanPath
+	lastOutcome  string
+	lastError    string
 }
 
 func NewState() *State {
@@ -106,6 +107,12 @@ func (s *State) SetDoorContactSnapshot(fn func() map[string]any) {
 	s.doorContactSnap = fn
 }
 
+func (s *State) SetExitButtonSnapshot(fn func() map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.exitButtonSnap = fn
+}
+
 func (s *State) SetMDNSSnapshot(fn func() map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -162,17 +169,18 @@ func (s *State) Snapshot() map[string]any {
 	})
 
 	out := map[string]any{
-		"ok":                HealthOK(mode),
-		"configured":        s.configured,
-		"agentVersion":      buildinfo.Version,
-		"operationMode":     mode,
+		"ok":                 HealthOK(mode),
+		"configured":         s.configured,
+		"agentVersion":       buildinfo.Version,
+		"operationMode":      mode,
 		"operationModeLabel": ModeLabelPT(mode),
-		"identityReachable": s.identityReachable,
-		"uptimeSec":         int(now.Sub(s.startedAt).Seconds()),
-		"relaySimulated":    s.relaySimulated,
-		"statusLed":         statusLEDSnapshot(s.statusLEDSnap),
-		"doorContact":       doorContactSnapshot(s.doorContactSnap),
-		"mdns":              optionalSnapshot(s.mdnsSnap),
+		"identityReachable":  s.identityReachable,
+		"uptimeSec":          int(now.Sub(s.startedAt).Seconds()),
+		"relaySimulated":     s.relaySimulated,
+		"statusLed":          statusLEDSnapshot(s.statusLEDSnap),
+		"doorContact":        doorContactSnapshot(s.doorContactSnap),
+		"exitButton":         optionalSnapshot(s.exitButtonSnap),
+		"mdns":               optionalSnapshot(s.mdnsSnap),
 		"contingency": map[string]any{
 			"enabled":               s.contingency.Enabled,
 			"onlineRedeemTimeoutMs": s.contingency.OnlineRedeemTimeoutMs,

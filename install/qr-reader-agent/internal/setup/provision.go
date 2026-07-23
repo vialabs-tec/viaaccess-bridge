@@ -25,6 +25,9 @@ type ProvisionRequest struct {
 	DoorContactEnabled   *bool  `json:"doorContactEnabled"`
 	DoorContactGPIOPin   *int   `json:"doorContactGpioPin"`
 	DoorContactSimulated *bool  `json:"doorContactSimulated"`
+	ExitButtonEnabled    *bool  `json:"exitButtonEnabled"`
+	ExitButtonGPIOPin    *int   `json:"exitButtonGpioPin"`
+	ExitButtonSimulated  *bool  `json:"exitButtonSimulated"`
 }
 
 type claimAPIResponse struct {

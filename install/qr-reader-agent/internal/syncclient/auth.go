@@ -37,6 +37,14 @@ func setDoorContactEnabledHeader(req *http.Request, enabled bool) {
 	}
 }
 
+func setExitButtonEnabledHeader(req *http.Request, enabled bool) {
+	if enabled {
+		req.Header.Set("X-ViaAccess-Exit-Button-Enabled", "true")
+	} else {
+		req.Header.Set("X-ViaAccess-Exit-Button-Enabled", "false")
+	}
+}
+
 func setAgentVersionHeader(req *http.Request, version string) {
 	version = strings.TrimSpace(version)
 	if version == "" {
@@ -66,6 +74,7 @@ func (c *Client) setBridgeHeaders(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+c.cfg.DeviceKey)
 	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
 	setDoorContactEnabledHeader(req, c.cfg.DoorContactEnabled)
+	setExitButtonEnabledHeader(req, c.cfg.ExitButtonEnabled)
 	setAgentVersionHeader(req, c.cfg.AgentVersion)
 	setMdnsHostnameHeader(req, c.cfg.MdnsHostname)
 }

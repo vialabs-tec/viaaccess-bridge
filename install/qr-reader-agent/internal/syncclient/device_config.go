@@ -37,6 +37,7 @@ func (c *Client) FetchDeviceConfig(ctx context.Context, ifNoneMatch string) (Dev
 	}
 	setRelayEnabledHeader(req, c.cfg.RelayEnabled)
 	setDoorContactEnabledHeader(req, c.cfg.DoorContactEnabled)
+	setExitButtonEnabledHeader(req, c.cfg.ExitButtonEnabled)
 	setAgentVersionHeader(req, c.cfg.AgentVersion)
 	setMdnsHostnameHeader(req, c.cfg.MdnsHostname)
 
