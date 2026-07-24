@@ -63,7 +63,7 @@ Arquivo: [`door-terminal-board.svg`](./door-terminal-board.svg) — escala 1 m
 
 1. Parafuse a placa do sensor com **2× M3** (standoff 6–10 mm se precisar folga do fundo).
 2. Alinhe a face do borne com a **mesma parede** do borne `NO/COM` do relé (instalador vê `LOCK` + `DOOR` juntos).
-3. Internamente: pigtail curto (≤ 15 cm) da placa → GPIO 4 e GND. Não use o cabeçalho do Pi como conector de campo.
+3. Internamente: pigtail curto (**3–5 cm** típico, ≤ 8 cm) da placa → GPIO 4 e GND. Não use o cabeçalho do Pi como conector de campo. Energia 5 V do Pi separada do 12 V da trava: [field-hardening.md](./field-hardening.md).
 4. Rótulos na case: `LOCK` (carga 12 V), `DOOR SENSOR` e `EXIT BUTTON` (sinais secos). Não misture no mesmo bloco sem divisão clara.
 
 ### Espaçamento sugerido na parede

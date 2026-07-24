@@ -497,10 +497,16 @@ make release   # gera bin/viaaccess-qr-agent-linux-arm64
 No Pi (copiar o repo ou só `bin/` + `scripts/` + `systemd/`):
 
 ```bash
+# opcional — piloto: SD industrial, swap off, journal volátil, watchdog
+sudo ./scripts/harden-os.sh
+# reboot se config.txt ganhou dtparam=watchdog=on
+
 sudo ./scripts/install.sh --binary bin/viaaccess-qr-agent-linux-arm64
 # com LEDs de estado:
 sudo ./scripts/install.sh --binary bin/viaaccess-qr-agent-linux-arm64 --enable-status-led
 ```
+
+Endurecimento de armazenamento/energia (Pi Bookworm vs CM+eMMC): [docs/field-hardening.md](docs/field-hardening.md).
 
 O script:
 
@@ -558,8 +564,11 @@ journalctl -u viaaccess-qr-agent -u viaaccess-qr-agent-health -f
 | Exit button (REX) | `internal/exitbutton` |
 | Fleet OTA | `scripts/install.sh`, Identity enqueue |
 | Install + health boot | `scripts/install.sh`, `*-health.service` |
+| OS harden (piloto) | `scripts/harden-os.sh`, [docs/field-hardening.md](docs/field-hardening.md) |
 
 ## Ver também
 
 - Identity: `GET /api/bridge/device-config`, `POST /api/bridge/provision/claim`, `POST /api/bridge/intent/redeem`, `POST /api/bridge/door-contact/events`, `POST /api/bridge/exit-button/events` — OpenAPI em viaaccess-identity
+- [docs/field-hardening.md](docs/field-hardening.md) — storage + energia (piloto Pi / produto CM)
+- [docs/appliance-io-panel.md](docs/appliance-io-panel.md) — bornes LOCK / DOOR / EXIT
 - [identity-qr-bridge.md](https://github.com/vialabs-tec/viaaccess-identity/blob/main/docs/installation/identity-qr-bridge.md)
