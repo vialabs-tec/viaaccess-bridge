@@ -1,2 +1,6 @@
 .env
 frigate/storage/
+frigate/config/*.db
+frigate/config/*.db-journal
+frigate/config/*.db
+frigate/config/*.db-*
