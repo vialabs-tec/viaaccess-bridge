@@ -107,6 +107,34 @@ since these boards have no separate power LED. And never leave the coil on `3V3`
 it does energize, which makes it a useful diagnostic, but ~190 mA out of the LDO
 next to the radio browned the board out mid-test and reset it.
 
+### Powering in the field
+
+One 5 V supply runs the whole appliance, board and relay module together. The
+brownout on the bench was not one supply being asked for too much: the coil was
+hanging off `3V3`, the LDO that also feeds the radio. On the 5 V rail those ~190 mA
+are unremarkable. And because `5V in` does not source power, the field topology is
+the bench one reversed, with the supply feeding that pin instead of being tapped
+from it:
+
+| From | To |
+|---|---|
+| Supply +5 V | Board `5V in`, and the module's `VCC` in parallel from the supply |
+| Supply GND | Board `GND` and the module's `GND`, common ground is what the trigger references |
+| GPIO 10 | Module `IN`, with the 10k to 3.3 V |
+
+Then drop the USB cable: one source at a time, USB only on the bench for flash and
+monitor. Budget ~500 mA steady for the board and the EP8280L, peaking near 850 mA
+while the coil is energized, so a 2 A supply leaves real margin. Fit a 470 µF to
+1000 µF electrolytic across 5 V and GND close to the board, since the coil's inrush
+is the transient that already reset this hardware once.
+
+The lock is the exception and the one place a second supply belongs. A 12 V strike
+or maglock takes its own supply, switched by the dry contacts, never the appliance's
+5 V: a solenoid pulls amps on engage and would brown the MCU out at exactly the
+moment the door is meant to open. A single 12 V panel supply with a 12 V to 5 V
+converter for the electronics works as well, as long as the strike hangs off the
+12 V side and the appliance only ever sees the converter output.
+
 Trigger polarity says nothing about what a power cut does, which is a separate
 decision on the contact side. With no power the coil is de-energized whatever the
 polarity is, so the relay rests with `COM` closed on `NC` and open on `NO`. What
