@@ -6,6 +6,7 @@ idf_component_register(
     "config_json.cpp"
     "door_contact.cpp"
     "ds3231_driver.cpp"
+    "exit_button.cpp"
     "http_server.cpp"
     "identity_client.cpp"
     "qr_reader.cpp"

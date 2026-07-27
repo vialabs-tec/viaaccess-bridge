@@ -194,6 +194,27 @@ curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/door-contact/sim \
 The sim endpoint only flips the virtual reed; the watcher still debounces and
 POSTs, so `held_open` fires the same way as with hardware.
 
+### Wiring the exit button (REX)
+
+Momentary button on the secure side of the door. One leg to **GPIO 12**, the other
+to **GND**. Internal pull-up, `activeLow: true` (LOW = pressed). Debounce 50 ms,
+cooldown 3000 ms so a held or bouncing press cannot re-fire.
+
+On a stable press the appliance notifies Identity (`POST /api/bridge/exit-button/events`)
+to open the same grace window as redeem / UNLOCK, then pulses the relay. Egress is
+local-first: a failed notify still unlocks; only a revoked device key aborts before
+the pulse. Boot seeds without unlocking, so a stuck button does not open the door.
+
+Homologation without the button: **Fiação** → *Simular* on the REX block, then
+
+```bash
+curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/exit-button/sim \
+  -H 'Content-Type: application/json' -d '{"state":"pressed"}'
+# release so the next press can arm again
+curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/exit-button/sim \
+  -H 'Content-Type: application/json' -d '{"state":"idle"}'
+```
+
 ### Wiring the EP8280L
 
 The module ships as a USB HID keyboard ("USB-KBW"), which the S3 cannot host. Two
@@ -230,6 +251,7 @@ main/                       ESP-IDF application
   sync_task.cpp             60 s policy loop + command loop
   relay.cpp                 lock output
   door_contact.cpp          MC38 reed (GPIO or simulated)
+  exit_button.cpp           REX button (GPIO or simulated)
   web/                      embedded setup and Wi-Fi pages
 scripts/homologate.sh       field checklist against a flashed appliance
 test/host/                  host unit tests for viaaccess_core
@@ -433,9 +455,8 @@ Deliberate gaps, listed so nobody assumes parity with the Pi:
   never entered: with Identity unreachable a scan is refused with `SYNC_STALE`
   (fail closed). The switch is `app::kLocalContingencySupported` in
   `main/app_state.hpp`.
-- **REX button and status LED drivers.** The pins, the config and the simulation
-  endpoint for the exit button exist; the GPIO interrupt handling and the LED
-  state machine do not, so `/health` reports `driver: "pending"` for them.
+- **Status LED driver.** The pins and config exist; the KY-016 state machine does
+  not, so `/health` reports `driver: "pending"` for it.
 - **OTA download.** The partition table reserves both slots and rollback is on,
   but an `update` command is acknowledged as unsupported rather than silently
   dropped.

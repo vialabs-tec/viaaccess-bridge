@@ -84,6 +84,8 @@ class State {
   // the driver (the watcher already holds that mutex when it updates State).
   void set_door_contact(bool enabled, bool simulated, bool ready, int gpio_pin,
                         const std::string& state);
+  void set_exit_button(bool enabled, bool simulated, bool ready, int gpio_pin,
+                       const std::string& state);
   void set_simulated_door_state(const std::string& state);
   void set_simulated_exit_state(const std::string& state);
 
@@ -128,6 +130,12 @@ class State {
   bool door_ready_ = false;
   int door_gpio_pin_ = 0;
   std::string door_state_;
+
+  bool exit_enabled_ = false;
+  bool exit_simulated_ = false;
+  bool exit_ready_ = false;
+  int exit_gpio_pin_ = 0;
+  std::string exit_state_;
 
   std::string simulated_door_state_;
   std::string simulated_exit_state_;

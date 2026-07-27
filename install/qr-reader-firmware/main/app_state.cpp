@@ -276,6 +276,21 @@ void State::set_door_contact(bool enabled, bool simulated, bool ready, int gpio_
   }
 }
 
+void State::set_exit_button(bool enabled, bool simulated, bool ready, int gpio_pin,
+                            const std::string& state) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  exit_enabled_ = enabled;
+  exit_simulated_ = simulated;
+  exit_ready_ = ready;
+  exit_gpio_pin_ = gpio_pin;
+  exit_state_ = state;
+  if (simulated) {
+    simulated_exit_state_ = state;
+  } else {
+    simulated_exit_state_.clear();
+  }
+}
+
 void State::set_simulated_door_state(const std::string& state) {
   std::lock_guard<std::mutex> lock(mutex_);
   simulated_door_state_ = state;
@@ -392,7 +407,7 @@ std::string State::HealthJson() const {
   cJSON_AddBoolToObject(root, "identityReachable", identity_reachable_);
   cJSON_AddBoolToObject(root, "relaySimulated", relay_simulated_);
 
-  // REX button and the RGB status LED are still pending; the reed switch is live.
+  // Status LED is still pending; reed and REX are live.
   cJSON* status_led = cJSON_AddObjectToObject(root, "statusLed");
   cJSON_AddBoolToObject(status_led, "enabled", config_.status_led.enabled);
   cJSON_AddStringToObject(status_led, "driver", "pending");
@@ -414,10 +429,20 @@ std::string State::HealthJson() const {
   }
 
   cJSON* exit_button = cJSON_AddObjectToObject(root, "exitButton");
-  cJSON_AddBoolToObject(exit_button, "enabled", config_.exit_button.enabled);
-  cJSON_AddBoolToObject(exit_button, "simulated", config_.exit_button.simulated);
-  cJSON_AddStringToObject(exit_button, "driver", "pending");
-  AddNullableString(exit_button, "simulatedState", simulated_exit_state_);
+  cJSON_AddBoolToObject(exit_button, "enabled", exit_enabled_);
+  if (exit_enabled_) {
+    cJSON_AddBoolToObject(exit_button, "simulated", exit_simulated_);
+    cJSON_AddBoolToObject(exit_button, "ready", exit_ready_);
+    cJSON_AddNumberToObject(exit_button, "gpioPin", exit_gpio_pin_);
+    if (!exit_state_.empty()) {
+      cJSON_AddStringToObject(exit_button, "state", exit_state_.c_str());
+    } else {
+      cJSON_AddNullToObject(exit_button, "state");
+    }
+    if (exit_simulated_) {
+      AddNullableString(exit_button, "simulatedState", simulated_exit_state_);
+    }
+  }
 
   cJSON* contingency = cJSON_AddObjectToObject(root, "contingency");
   cJSON_AddBoolToObject(contingency, "enabled", config_.contingency.enabled);

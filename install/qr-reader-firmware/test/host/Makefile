@@ -17,6 +17,7 @@ SOURCES := \
 	test_config.cpp \
 	test_door_contact.cpp \
 	test_ds3231.cpp \
+	test_exit_button.cpp \
 	test_hostname.cpp \
 	test_line_buffer.cpp \
 	test_mode.cpp \

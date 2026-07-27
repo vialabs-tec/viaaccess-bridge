@@ -8,6 +8,7 @@ idf_component_register(
     "src/config.cpp"
     "src/door_contact.cpp"
     "src/ds3231.cpp"
+    "src/exit_button.cpp"
     "src/hostname.cpp"
     "src/line_buffer.cpp"
     "src/mode.cpp"

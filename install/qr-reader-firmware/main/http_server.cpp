@@ -13,6 +13,7 @@
 #include "identity_client.hpp"
 #include "relay.hpp"
 #include "door_contact.hpp"
+#include "exit_button.hpp"
 #include "scan_service.hpp"
 #include "viaaccess/clock.hpp"
 #include "viaaccess/config.hpp"
@@ -666,27 +667,17 @@ esp_err_t HandleExitButtonSim(httpd_req_t* req) {
     return SendError(req, 400, "state deve ser pressed ou idle.");
   }
 
-  app::State::Instance().set_simulated_exit_state(pressed ? "pressed" : "idle");
-  if (!pressed) {
-    cJSON* root = cJSON_CreateObject();
-    cJSON_AddBoolToObject(root, "ok", true);
-    cJSON_AddStringToObject(root, "state", "idle");
-    return SendJson(req, 200, PrintAndDelete(root));
+  // Same as the Go agent: flip the virtual button and let the watcher debounce,
+  // notify Identity and pulse. Posting here would skip cooldown and arming.
+  const esp_err_t set = exit_button::SetSimPressed(pressed);
+  if (set != ESP_OK) {
+    return SendError(req, 409, "Simulador de botoeira indisponível.");
   }
-
-  // Identity first: it opens the grace window that keeps the door-contact
-  // opened event that follows from being classified as forced entry.
-  const identity::Outcome outcome = identity::PostExitButtonEvent(cfg, "pressed");
-  const esp_err_t pulsed = relay::Pulse();
 
   cJSON* root = cJSON_CreateObject();
-  cJSON_AddBoolToObject(root, "ok", outcome.ok);
-  cJSON_AddStringToObject(root, "state", "pressed");
-  cJSON_AddBoolToObject(root, "relayPulsed", pulsed == ESP_OK);
-  if (!outcome.ok) {
-    cJSON_AddStringToObject(root, "error", outcome.error.c_str());
-  }
-  return SendJson(req, outcome.ok ? 200 : 502, PrintAndDelete(root));
+  cJSON_AddBoolToObject(root, "ok", true);
+  cJSON_AddStringToObject(root, "state", pressed ? "pressed" : "idle");
+  return SendJson(req, 200, PrintAndDelete(root));
 }
 
 struct Route {
