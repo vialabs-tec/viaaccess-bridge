@@ -4,6 +4,11 @@ Cenário alvo: **celular com internet (4G)** + **porta sem WAN** no momento do s
 
 O appliance tenta sempre o caminho online (source of truth). Se a rede falhar, usa o **último sync de política** local e o **ticket assinado (`st`)** no QR.
 
+> Implementado **somente no agent Go (Pi)**. O firmware ESP32-S3 hoje falha fechado em
+> `SYNC_STALE` quando o Identity não responde, e só entrará em contingência com hora
+> confiável (SNTP recente ou DS3231 presente), porque a validade do ticket e a idade
+> da política dependem do relógio.
+
 ## Estados (`operationMode`)
 
 ```mermaid

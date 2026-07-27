@@ -2,6 +2,10 @@
 
 Layout mínimo para o **protótipo funcional**: bornes para fora da case, sem fio direto no header do Pi.
 
+> Pinos deste documento são **Raspberry Pi (BCM)**. No appliance ESP32-S3 a fiação de
+> campo é a mesma ideia com outros GPIO (relé 10, porta 11, REX 12): ver
+> [install/qr-reader-firmware](../../qr-reader-firmware/README.md#factory-pin-map).
+
 ## Ideia
 
 | Saída de campo | Função | Pi (BCM) |

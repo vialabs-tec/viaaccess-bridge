@@ -3,6 +3,11 @@
 Como operar o appliance QR em campo sem depender de SD genérico e fonte fraca.
 O binário do agent (`install.sh`, OTA em `/var/lib/…`) **não muda** entre os perfis abaixo — o que muda é a imagem Linux e a alimentação.
 
+> Documento **específico do Raspberry Pi**: imagem Linux, cartão SD e systemd. O
+> appliance ESP32-S3 não tem sistema de arquivos de propósito geral nem SD; a
+> preocupação equivalente lá é fonte 5 V estável para o leitor e brownout detector.
+> Ver [install/qr-reader-firmware](../../qr-reader-firmware/README.md).
+
 ## Fases
 
 | Fase | Hardware | Storage | Energia |

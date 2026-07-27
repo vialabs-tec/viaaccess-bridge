@@ -8,6 +8,12 @@ Runtime de produção no Raspberry Pi (setup UI, policy sync, OTA, door contact,
 Celular (PWA) → QR → leitor USB/HTTP → viaaccess-qr-agent → Identity → ViaAccess
 ```
 
+> **Este documento é específico do Raspberry Pi.** GPIO em numeração BCM, leitor USB
+> HID, systemd e caminhos em `/etc` não valem para o outro appliance. O firmware
+> ESP32-S3 fala o mesmo contrato HTTP e os mesmos endpoints do Identity, com outro
+> mapa de pinos e leitor em UART TTL:
+> [install/qr-reader-firmware](../qr-reader-firmware/README.md).
+
 ## Build
 
 Requisitos: Go 1.22+
