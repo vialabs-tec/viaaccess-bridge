@@ -79,6 +79,27 @@ void ReaderLoop(void* /*argument*/) {
   viaaccess::LineBuffer lines;
   char chunk[kReadChunkBytes];
 
+  // Readiness means the port is open, not that something was scanned: an idle
+  // door would otherwise report a broken reader for as long as nobody passes.
+  // Publishing only on change keeps this off the state mutex every 200 ms.
+  bool published = false;
+  bool published_ready = false;
+  uint32_t published_scans = 0;
+  uint32_t published_dropped = 0;
+  const auto publish = [&](bool ready) {
+    const uint32_t scans = g_scans.load();
+    const uint32_t dropped = lines.dropped_lines();
+    if (published && ready == published_ready && scans == published_scans &&
+        dropped == published_dropped) {
+      return;
+    }
+    app::State::Instance().set_reader_stats(ready, scans, dropped);
+    published = true;
+    published_ready = ready;
+    published_scans = scans;
+    published_dropped = dropped;
+  };
+
   for (;;) {
     uart_port_t port = UART_NUM_0;
     bool ready = false;
@@ -88,10 +109,11 @@ void ReaderLoop(void* /*argument*/) {
       port = static_cast<uart_port_t>(g_config.uart_port);
     }
     if (!ready) {
-      app::State::Instance().set_reader_stats(false, g_scans.load(), lines.dropped_lines());
+      publish(false);
       vTaskDelay(pdMS_TO_TICKS(1000));
       continue;
     }
+    publish(true);
 
     const int read = uart_read_bytes(port, chunk, sizeof(chunk), pdMS_TO_TICKS(200));
     if (read <= 0) {
@@ -105,7 +127,7 @@ void ReaderLoop(void* /*argument*/) {
       // which is also what keeps two rapid scans from interleaving.
       scan_service::HandleReaderLine(line);
     }
-    app::State::Instance().set_reader_stats(true, g_scans.load(), lines.dropped_lines());
+    publish(true);
   }
 }
 
