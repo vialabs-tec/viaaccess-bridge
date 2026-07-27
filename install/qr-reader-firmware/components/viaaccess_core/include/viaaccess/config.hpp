@@ -49,11 +49,15 @@ inline constexpr int kDefaultRtcI2cPort = 0;
 inline constexpr int kDefaultRtcSdaPin = 8;
 inline constexpr int kDefaultRtcSclPin = 9;
 
+// The reference 1-channel 5 V module triggers on a low input (0 V to 1.5 V), like
+// most opto-isolated boards; active_high is for bare transistor boards. Guessing
+// wrong energizes the coil at rest, which leaves the door unlocked instead of
+// failing closed, so the polarity is exposed in /setup.
 struct RelayConfig {
   bool enabled = true;
   int gpio_pin = kDefaultRelayPin;
   int pulse_ms = kDefaultRelayPulseMs;
-  bool active_high = true;
+  bool active_high = false;
 };
 
 // KY-016 RGB module (common cathode). R = stale/contingency, G = online, B = setup.

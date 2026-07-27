@@ -55,6 +55,11 @@ esp_err_t ConfigureLocked(const viaaccess::RelayConfig& cfg) {
     return ESP_ERR_INVALID_ARG;
   }
 
+  // Load the idle level before the pin becomes an output. The output register
+  // starts at 0, which is the active level on a low-triggered board, so
+  // configuring first would drive the coil until the set_level below lands.
+  gpio_set_level(static_cast<gpio_num_t>(cfg.gpio_pin), IdleLevel());
+
   gpio_config_t io = {};
   io.pin_bit_mask = 1ULL << static_cast<unsigned>(cfg.gpio_pin);
   io.mode = GPIO_MODE_OUTPUT;

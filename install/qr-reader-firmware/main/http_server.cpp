@@ -189,6 +189,10 @@ bool ApplyHardwareOverrides(const cJSON* root, viaaccess::RuntimeConfig* cfg) {
     cfg->relay.pulse_ms = number;
     touched = true;
   }
+  if (JsonBool(root, "relayActiveHigh", &flag)) {
+    cfg->relay.active_high = flag;
+    touched = true;
+  }
   if (JsonBool(root, "doorContactEnabled", &flag)) {
     cfg->door_contact.enabled = flag;
     touched = true;
@@ -261,19 +265,16 @@ viaaccess::RuntimeConfig BaseConfigFrom(const viaaccess::RuntimeConfig& existing
   return cfg;
 }
 
-esp_err_t FinishSave(httpd_req_t* req, viaaccess::RuntimeConfig cfg,
-                     const std::string& message_prefix) {
+// FinishLocalSave persists without touching the network. Rewiring is exactly the
+// job that happens while the link is down, so a wiring-only save must not depend
+// on Identity answering; the credential paths below go through FinishSave.
+esp_err_t FinishLocalSave(httpd_req_t* req, viaaccess::RuntimeConfig cfg,
+                          const std::string& message_prefix) {
   cfg = viaaccess::Normalize(std::move(cfg));
 
   const std::string invalid = viaaccess::ValidateOperational(cfg);
   if (!invalid.empty()) {
     return SendError(req, 400, invalid);
-  }
-
-  const esp_err_t ping = identity::Ping(cfg.identity_url, 8000);
-  if (ping != ESP_OK) {
-    return SendError(req, 502,
-                     std::string("Identity inacessível: ") + esp_err_to_name(ping));
   }
 
   const std::string slug = cfg.access_point_slug;
@@ -300,6 +301,26 @@ esp_err_t FinishSave(httpd_req_t* req, viaaccess::RuntimeConfig cfg,
     cJSON_AddStringToObject(root, "deviceId", device_id.c_str());
   }
   return SendJson(req, 200, PrintAndDelete(root));
+}
+
+// FinishSave is the credential path: a new device key or Identity URL is worth
+// nothing if the appliance cannot reach Identity, so that is checked before the
+// old configuration is replaced.
+esp_err_t FinishSave(httpd_req_t* req, viaaccess::RuntimeConfig cfg,
+                     const std::string& message_prefix) {
+  cfg = viaaccess::Normalize(std::move(cfg));
+
+  const std::string invalid = viaaccess::ValidateOperational(cfg);
+  if (!invalid.empty()) {
+    return SendError(req, 400, invalid);
+  }
+
+  const esp_err_t ping = identity::Ping(cfg.identity_url, 8000);
+  if (ping != ESP_OK) {
+    return SendError(req, 502,
+                     std::string("Identity inacessível: ") + esp_err_to_name(ping));
+  }
+  return FinishLocalSave(req, std::move(cfg), message_prefix);
 }
 
 // --- handlers -----------------------------------------------------------------
@@ -362,6 +383,7 @@ esp_err_t HandleSetupStatus(httpd_req_t* req) {
   cJSON_AddBoolToObject(hardware, "relayEnabled", cfg.relay.enabled);
   cJSON_AddNumberToObject(hardware, "relayGpioPin", cfg.relay.gpio_pin);
   cJSON_AddNumberToObject(hardware, "relayPulseMs", cfg.relay.pulse_ms);
+  cJSON_AddBoolToObject(hardware, "relayActiveHigh", cfg.relay.active_high);
   cJSON_AddBoolToObject(hardware, "relayAvailable", relay::available());
   cJSON_AddBoolToObject(hardware, "doorContactEnabled", cfg.door_contact.enabled);
   cJSON_AddNumberToObject(hardware, "doorContactGpioPin", cfg.door_contact.gpio_pin);
@@ -426,6 +448,40 @@ esp_err_t HandleSetupSave(httpd_req_t* req) {
   cJSON_Delete(root);
 
   return FinishSave(req, std::move(cfg), "Configuração salva.");
+}
+
+// HandleSetupHardware saves wiring only. Without it the sole way to move a pin or
+// fix the relay polarity after provisioning is a fresh claim from the admin, which
+// in the field means two people for one wire. Credentials, Identity URL, Wi-Fi and
+// the mDNS hostname are left exactly as they are.
+esp_err_t HandleSetupHardware(httpd_req_t* req) {
+  std::string body;
+  if (!ReadBody(req, &body)) {
+    return SendError(req, 400, "Corpo inválido.");
+  }
+  cJSON* root = cJSON_Parse(body.c_str());
+  if (root == nullptr || !cJSON_IsObject(root)) {
+    cJSON_Delete(root);
+    return SendError(req, 400, "JSON inválido.");
+  }
+  if (!Authorized(root)) {
+    cJSON_Delete(root);
+    return SendError(req, 401, "PIN inválido.");
+  }
+
+  viaaccess::RuntimeConfig cfg = app::State::Instance().config();
+  if (!cfg.configured) {
+    cJSON_Delete(root);
+    return SendError(req, 409,
+                     "Leitor ainda não provisionado: informe a fiação junto do claim.");
+  }
+  if (!ApplyHardwareOverrides(root, &cfg)) {
+    cJSON_Delete(root);
+    return SendError(req, 400, "Nenhum campo de fiação foi enviado.");
+  }
+  cJSON_Delete(root);
+
+  return FinishLocalSave(req, std::move(cfg), "Fiação salva.");
 }
 
 esp_err_t HandleSetupProvision(httpd_req_t* req) {
@@ -647,6 +703,7 @@ constexpr Route kRoutes[] = {
     {"/api/setup", HTTP_GET, HandleSetupStatus},
     {"/api/setup", HTTP_POST, HandleSetupSave},
     {"/api/setup/provision", HTTP_POST, HandleSetupProvision},
+    {"/api/setup/hardware", HTTP_POST, HandleSetupHardware},
     {"/api/setup/wifi/scan", HTTP_GET, HandleWifiScan},
     {"/api/setup/wifi", HTTP_POST, HandleWifiSave},
     {"/api/door-contact/sim", HTTP_POST, HandleDoorContactSim},

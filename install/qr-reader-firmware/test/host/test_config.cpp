@@ -34,6 +34,9 @@ VA_TEST(FactoryHardwareDefaultsForEsp32s3) {
   CHECK(cfg.relay.enabled);
   CHECK_EQ(cfg.relay.gpio_pin, 10);
   CHECK_EQ(cfg.relay.pulse_ms, 3000);
+  // Low-level trigger, matching the reference module: the inverted setting keeps
+  // the coil energized at rest, which releases the door instead of locking it.
+  CHECK(!cfg.relay.active_high);
   CHECK(cfg.door_contact.enabled);
   CHECK_EQ(cfg.door_contact.gpio_pin, 11);
   CHECK(cfg.door_contact.active_low);

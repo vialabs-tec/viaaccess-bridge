@@ -34,7 +34,7 @@ The map below also avoids the strapping pins (0, 3, 45, 46), the native USB pair
 
 | Function | GPIO | Notes |
 |---|---|---|
-| Relay | 10 | active high, 3000 ms pulse |
+| Relay | 10 | low-level trigger, 3000 ms pulse |
 | Door contact (reed) | 11 | active low, closed door pulls LOW |
 | Exit button (REX) | 12 | active low |
 | Status LED R / G / B | 4 / 5 / 6 | R stale, G online, B setup |
@@ -73,6 +73,68 @@ The oscillator stop flag is read at every boot, so a dead cell shows up as
 `clock.rtc.oscillatorStopped` in `/health` and as a warning on `/setup` instead of
 a wrong time being trusted. Each SNTP sync writes the corrected time back into the
 chip, which is what keeps the drift bounded and the flag clear.
+
+### Wiring the relay
+
+The trigger polarity describes the board, it is not a safety preference, and it is
+the one detail that fails dangerously when it disagrees with the hardware. A module
+that switches on a **low** input (`IN` pulled to GND, the usual opto-isolated board
+and what the factory default assumes) idles with the GPIO HIGH and the coil off.
+Leave *Módulo aciona em nível alto* checked on such a board and the idle level
+inverts: `IN` sits at GND for as long as the appliance is powered and idle, the
+coil stays energized and the door is released, with the "pulse" being the only
+moment it locks.
+
+Do not assume `IN` is pulled up on the module. The reference board is not: with the
+wire off the GPIO it energized on its own. So the coil closes during the boot
+window before `relay.cpp` configures the pin, after a crash that reverts the GPIO
+to an input, and if the wire ever works loose in the panel. Fit a **10k from `IN`
+to 3.3 V**, which holds the line at the idle level whenever nothing is driving it
+and costs nothing when the firmware is.
+
+Wiring: `VCC` to **5 V**, `GND` shared with the board, `IN` to GPIO 10. No level
+shifter is needed on a low-triggered module, since the GPIO only sinks the trigger
+current to GND. Budget ~190 mA for the coil while energized; with the EP8280L on
+the same rail, USB power from a laptop is marginal and a proper 5 V supply belongs
+in the panel.
+
+Two traps on where that 5 V comes from, both confirmed on the bench with an
+ESP32-S3 N16R8 clone. The header pin silkscreened `5V in` **fed nothing outward**:
+the module was completely dead on it and came alive on `3V3`, because the pin sits
+behind a diode into the regulator so an external supply cannot backfeed USB. Check
+the pin before blaming the module, and use the module's own LED as the indicator,
+since these boards have no separate power LED. And never leave the coil on `3V3`:
+it does energize, which makes it a useful diagnostic, but ~190 mA out of the LDO
+next to the radio browned the board out mid-test and reset it.
+
+Trigger polarity says nothing about what a power cut does, which is a separate
+decision on the contact side. With no power the coil is de-energized whatever the
+polarity is, so the relay rests with `COM` closed on `NC` and open on `NO`. What
+the door does then follows from the lock: a fail-secure strike stays locked
+without power, a maglock or fail-safe strike releases, which is sometimes what
+fire code demands on an escape route. An entrance normally pairs a fail-secure
+strike with `COM` plus `NO`, so a cut supply leaves the circuit open and the door
+locked. The relay never carries the appliance's own supply.
+
+Test with nothing screwed into the terminals first, watching the module LED and
+listening for the click. The idle state is what matters: LED off and silence
+between pulses. If the module stays dark even when triggered, it has no power, and
+a dark LED at idle proves nothing on its own. Then note that a made-up QR **will
+not** move the relay, since
+the pulse only follows an `AUTHORIZED` redeem and Identity rejects an unknown
+intent. Three things do drive it:
+
+| How | What it proves |
+|---|---|
+| `POST /api/exit-button/sim` `{"state":"pressed"}` | The GPIO, polarity and pulse width, with no network in the way. Needs the REX simulated flag on. |
+| **Abrir porta** in the Identity admin | The `UNLOCK` command loop, ack included |
+| A member's rotating QR | The whole path, redeem to strike |
+
+Changing polarity or the simulated flags is a wiring save, which on a provisioned
+appliance is the **Fiação** tab of `/setup` (`POST /api/setup/hardware`). It keeps
+the device key, the Identity URL and the Wi-Fi credentials, and it never calls
+Identity, so a pin can be corrected during an outage without a new claim from the
+admin.
 
 ### Wiring the EP8280L
 
@@ -228,7 +290,18 @@ actually worked instead of storing an address it cannot reach.
 The advanced block is collapsed on purpose. Opening it sends the whole hardware
 map with the request, so an installer who wired something other than the factory
 pins should open it; leaving it closed keeps the factory map and, on a
-reprovision, whatever pins were already stored.
+reprovision, whatever pins were already stored. Its fields are filled from
+`/api/setup` on load, once, so opening the block on a reprovision does not quietly
+push the factory pins over a custom panel.
+
+The page has three tabs, and the wiring fields are the same set in all of them
+(one `<template>`, cloned):
+
+| Tab | For |
+|---|---|
+| Provisionar (QR) | The normal install: paste the claim, wiring optional in the advanced block |
+| Manual | An `idb_` device key typed by hand, when no claim is available |
+| Fiação | Wiring on an appliance already provisioned, keeping credentials and skipping Identity |
 
 ## HTTP surface
 
@@ -240,6 +313,7 @@ reprovision, whatever pins were already stored.
 | `GET /api/setup` | Current state for the pages (never returns the device key) |
 | `POST /api/setup` | Manual configuration with an `idb_` device key |
 | `POST /api/setup/provision` | Zero-touch claim with a `clm_` token |
+| `POST /api/setup/hardware` | Wiring only, no credentials and no Identity round-trip |
 | `GET /api/setup/wifi/scan` | Nearby networks, strongest first |
 | `POST /api/setup/wifi` | Store credentials and reconnect |
 | `POST /api/door-contact/sim` | `{"state":"open"\|"closed"}`, simulation only |
