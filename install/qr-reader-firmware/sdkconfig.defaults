@@ -1,10 +1,11 @@
 # Target: ESP32-S3 N16R8 (16 MB flash, 8 MB octal PSRAM).
 CONFIG_IDF_TARGET="esp32s3"
 
-# Flash layout.
+# Flash layout. DIO and not QIO: octal PSRAM below takes over the same data lines
+# the quad flash modes would need, so asking for QIO here is silently downgraded.
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
-CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
