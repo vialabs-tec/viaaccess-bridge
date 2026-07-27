@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ViaAccess QR Reader — Setup</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 1.5rem; background: #0b0f14; color: #e8edf2; }
+    main { max-width: 32rem; margin: 0 auto; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    p { color: #9aa7b5; font-size: 0.9rem; }
+    a { color: #60a5fa; }
+    .hint-url { margin-top: 0.75rem; }
+    .hint-url code { color: #e8edf2; font-size: 0.85rem; }
+    label { display: block; margin-top: 1rem; font-size: 0.85rem; }
+    label.check { display: flex; align-items: center; gap: 0.55rem; cursor: pointer; }
+    input, select, textarea { width: 100%; margin-top: 0.35rem; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: inherit; box-sizing: border-box; }
+    label.check input[type="checkbox"] { width: 1rem; height: 1rem; margin: 0; padding: 0; flex-shrink: 0; accent-color: #3b82f6; }
+    textarea { min-height: 4.5rem; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+    button[type="submit"] { margin-top: 1.25rem; width: 100%; padding: 0.7rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
+    button[type="submit"]:disabled { opacity: 0.6; cursor: wait; }
+    .tabs { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    .tab { flex: 1; padding: 0.55rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: #9aa7b5; cursor: pointer; }
+    .tab.active { border-color: #3b82f6; color: #e8edf2; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .msg { margin-top: 1rem; font-size: 0.9rem; }
+    .err { color: #f87171; }
+    .ok { color: #4ade80; }
+    fieldset { border: 1px solid #2a3441; border-radius: 8px; margin-top: 1rem; padding: 0.75rem 1rem; }
+    legend { padding: 0 0.35rem; font-size: 0.85rem; color: #9aa7b5; }
+    .factory, .netbar { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; font-size: 0.8rem; color: #9aa7b5; line-height: 1.45; }
+    .factory strong, .netbar strong { color: #e8edf2; font-weight: 600; }
+    .netbar.offline { border-color: #7f1d1d; }
+    details.advanced { margin-top: 1rem; border: 1px solid #2a3441; border-radius: 8px; padding: 0.5rem 0.75rem 0.75rem; }
+    details.advanced summary { cursor: pointer; font-size: 0.85rem; color: #9aa7b5; padding: 0.35rem 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ViaAccess QR Reader</h1>
+    <p>Provisionamento zero-touch: cole o claim do admin. GPIO/relé usam o mapa de fábrica.</p>
+    <p class="hint-url">Prefira <code>http://viaaccess-qr.local:3710/setup</code> (mesma Wi‑Fi). Se não resolver, use o IP mostrado abaixo.</p>
+
+    <div id="netbar" class="netbar">Verificando rede…</div>
+
+    <div class="tabs">
+      <button type="button" class="tab active" data-tab="provision">Provisionar (QR)</button>
+      <button type="button" class="tab" data-tab="manual">Manual</button>
+    </div>
+
+    <div id="panel-provision" class="panel active">
+      <form id="provision-form">
+        <label>PIN de fábrica (se configurado)
+          <input name="pin" type="password" autocomplete="off" />
+        </label>
+        <label>URL ou token de provisionamento
+          <textarea name="claimInput" required placeholder="https://…/bridge/provision?t=clm_… ou só clm_…"></textarea>
+        </label>
+        <label>URL do Identity (obrigatória se colar só o token clm_)
+          <input name="identityUrl" placeholder="http://192.168.x.x:3100" />
+        </label>
+        <div class="factory">
+          <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
+          Relé GPIO 10 · Sensor porta GPIO 11 · Botão saída GPIO 12 · LED R/G/B 4/5/6 · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
+        </div>
+        <details class="advanced" id="provision-advanced">
+          <summary>Configuração avançada (GPIO / hostname LAN)</summary>
+          <fieldset>
+            <legend>Hostname mDNS (opcional)</legend>
+            <label>Hostname .local
+              <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
+            </label>
+            <p style="margin:0.5rem 0 0;font-size:0.75rem;color:#9aa7b5;line-height:1.4">
+              Vazio: usa o slug do ponto (<code>viaaccess-qr-{slug}</code>). Preencha só se houver
+              um segundo leitor no mesmo ponto.
+            </p>
+          </fieldset>
+          <fieldset>
+            <legend>Relé</legend>
+            <label class="check">
+              <input name="relayEnabled" type="checkbox" checked />
+              <span>Acionar relé GPIO após autorização</span>
+            </label>
+            <label>GPIO pin
+              <input name="relayGpioPin" type="number" value="10" min="1" />
+            </label>
+            <label>Pulso (ms)
+              <input name="relayPulseMs" type="number" value="3000" min="100" />
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Sensor de porta (MC38)</legend>
+            <label class="check">
+              <input name="doorContactEnabled" type="checkbox" checked />
+              <span>Monitorar reed switch (abertura forçada / held)</span>
+            </label>
+            <label>GPIO pin
+              <input name="doorContactGpioPin" type="number" value="11" min="1" />
+            </label>
+            <label class="check">
+              <input name="doorContactSimulated" type="checkbox" />
+              <span>Simular (sem hardware, para homologação)</span>
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Botão de saída (REX)</legend>
+            <label class="check">
+              <input name="exitButtonEnabled" type="checkbox" checked />
+              <span>Botão interno abre a porta sem QR (mesmo relé)</span>
+            </label>
+            <label>GPIO pin
+              <input name="exitButtonGpioPin" type="number" value="12" min="1" />
+            </label>
+            <label class="check">
+              <input name="exitButtonSimulated" type="checkbox" />
+              <span>Simular (sem hardware, para homologação)</span>
+            </label>
+          </fieldset>
+        </details>
+        <button type="submit">Provisionar</button>
+        <div id="provision-msg" class="msg"></div>
+      </form>
+    </div>
+
+    <div id="panel-manual" class="panel">
+      <form id="setup-form">
+        <label>PIN de fábrica (se configurado)
+          <input name="pin" type="password" autocomplete="off" />
+        </label>
+        <label>URL do Identity
+          <input name="identityUrl" required placeholder="https://identity.cliente.com" />
+        </label>
+        <label>Device key (idb_…)
+          <input name="deviceKey" required placeholder="idb_…" autocomplete="off" />
+        </label>
+        <label>Slug do ponto (opcional)
+          <input name="accessPointSlug" placeholder="entrada-principal" />
+        </label>
+        <div class="factory">
+          <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
+          Relé GPIO 10 · Sensor porta GPIO 11 · Botão saída GPIO 12 · LED R/G/B 4/5/6 · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
+        </div>
+        <details class="advanced" id="manual-advanced">
+          <summary>Configuração avançada (GPIO / hostname LAN)</summary>
+          <fieldset>
+            <legend>Hostname mDNS (opcional)</legend>
+            <label>Hostname .local
+              <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Relé</legend>
+            <label class="check">
+              <input name="relayEnabled" type="checkbox" checked />
+              <span>Acionar relé GPIO após autorização</span>
+            </label>
+            <label>GPIO pin
+              <input name="relayGpioPin" type="number" value="10" min="1" />
+            </label>
+            <label>Pulso (ms)
+              <input name="relayPulseMs" type="number" value="3000" min="100" />
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Sensor de porta (MC38)</legend>
+            <label class="check">
+              <input name="doorContactEnabled" type="checkbox" checked />
+              <span>Monitorar reed switch (abertura forçada / held)</span>
+            </label>
+            <label>GPIO pin
+              <input name="doorContactGpioPin" type="number" value="11" min="1" />
+            </label>
+            <label class="check">
+              <input name="doorContactSimulated" type="checkbox" />
+              <span>Simular (sem hardware, para homologação)</span>
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Botão de saída (REX)</legend>
+            <label class="check">
+              <input name="exitButtonEnabled" type="checkbox" checked />
+              <span>Botão interno abre a porta sem QR (mesmo relé)</span>
+            </label>
+            <label>GPIO pin
+              <input name="exitButtonGpioPin" type="number" value="12" min="1" />
+            </label>
+            <label class="check">
+              <input name="exitButtonSimulated" type="checkbox" />
+              <span>Simular (sem hardware, para homologação)</span>
+            </label>
+          </fieldset>
+        </details>
+        <label class="check">
+          <input name="emitDetection" type="checkbox" checked />
+          <span>Emitir detection no ViaAccess (recomendado sem câmera na porta)</span>
+        </label>
+        <button type="submit">Salvar e testar conexão</button>
+        <div id="manual-msg" class="msg"></div>
+      </form>
+    </div>
+  </main>
+  <script>
+    const netbar = document.getElementById('netbar');
+
+    async function refreshStatus() {
+      try {
+        const res = await fetch('/api/setup');
+        const data = await res.json();
+        const net = data.network || {};
+        const clock = data.clock || {};
+        if (net.connected) {
+          netbar.className = 'netbar';
+          netbar.innerHTML = '<strong>Rede:</strong> ' + (net.ssid || '—') + ' · IP ' + (net.ip || '—') +
+            ' · <a href="/wifi">trocar rede</a><br /><strong>Firmware:</strong> ' + (data.agentVersion || '—') +
+            ' · <strong>mDNS:</strong> ' + (data.mdnsHostname || '—') + '.local' +
+            '<br /><strong>Hora:</strong> ' + (clock.sourceLabel || '—') +
+            (clock.rtcBatteryLost
+              ? ' · <span class="err">bateria do relógio esgotada, troque a célula</span>'
+              : clock.rtcPresent ? ' · relógio de bateria presente' : ' · sem relógio de bateria');
+        } else {
+          netbar.className = 'netbar offline';
+          netbar.innerHTML = '<strong>Sem Wi-Fi.</strong> O provisionamento precisa alcançar o Identity. ' +
+            '<a href="/wifi">Configurar rede</a>';
+        }
+      } catch (err) {
+        netbar.className = 'netbar offline';
+        netbar.textContent = 'Não foi possível ler o status do leitor.';
+      }
+    }
+    refreshStatus();
+    setInterval(refreshStatus, 5000);
+
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    function hardwarePayload(fd, advancedOpen) {
+      if (!advancedOpen) return {};
+      const mdnsHostname = String(fd.get('mdnsHostname') || '').trim();
+      return {
+        relayEnabled: fd.get('relayEnabled') === 'on',
+        relayGpioPin: Number(fd.get('relayGpioPin') || 10),
+        relayPulseMs: Number(fd.get('relayPulseMs') || 3000),
+        doorContactEnabled: fd.get('doorContactEnabled') === 'on',
+        doorContactGpioPin: Number(fd.get('doorContactGpioPin') || 11),
+        doorContactSimulated: fd.get('doorContactSimulated') === 'on',
+        exitButtonEnabled: fd.get('exitButtonEnabled') === 'on',
+        exitButtonGpioPin: Number(fd.get('exitButtonGpioPin') || 12),
+        exitButtonSimulated: fd.get('exitButtonSimulated') === 'on',
+        ...(mdnsHostname ? { mdnsHostname } : {}),
+      };
+    }
+
+    async function submitForm(form, msg, url, buildBody) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        msg.textContent = '';
+        msg.className = 'msg';
+        const btn = form.querySelector('button[type="submit"]');
+        btn.disabled = true;
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(buildBody(new FormData(form))),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            msg.textContent = data.error || 'Falha na operação.';
+            msg.className = 'msg err';
+            return;
+          }
+          msg.textContent = data.message || 'Concluído.';
+          msg.className = 'msg ok';
+          refreshStatus();
+        } catch (err) {
+          msg.textContent = String(err);
+          msg.className = 'msg err';
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
+
+    const provisionAdvanced = document.getElementById('provision-advanced');
+    submitForm(
+      document.getElementById('provision-form'),
+      document.getElementById('provision-msg'),
+      '/api/setup/provision',
+      (fd) => ({
+        pin: fd.get('pin') || '',
+        claimInput: fd.get('claimInput'),
+        identityUrl: fd.get('identityUrl') || '',
+        ...hardwarePayload(fd, provisionAdvanced.open),
+      }),
+    );
+
+    const manualAdvanced = document.getElementById('manual-advanced');
+    submitForm(
+      document.getElementById('setup-form'),
+      document.getElementById('manual-msg'),
+      '/api/setup',
+      (fd) => ({
+        pin: fd.get('pin') || '',
+        identityUrl: fd.get('identityUrl'),
+        deviceKey: fd.get('deviceKey'),
+        accessPointSlug: fd.get('accessPointSlug') || '',
+        emitDetection: fd.get('emitDetection') === 'on',
+        ...hardwarePayload(fd, manualAdvanced.open),
+      }),
+    );
+  </script>
+</body>
+</html>

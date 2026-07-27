@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ViaAccess QR Reader — Rede</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 1.5rem; background: #0b0f14; color: #e8edf2; }
+    main { max-width: 32rem; margin: 0 auto; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    p { color: #9aa7b5; font-size: 0.9rem; }
+    a { color: #60a5fa; }
+    label { display: block; margin-top: 1rem; font-size: 0.85rem; }
+    input, select { width: 100%; margin-top: 0.35rem; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: inherit; box-sizing: border-box; }
+    button { margin-top: 1.25rem; width: 100%; padding: 0.7rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
+    button.secondary { background: #121820; border: 1px solid #2a3441; color: #9aa7b5; margin-top: 0.5rem; }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .msg { margin-top: 1rem; font-size: 0.9rem; }
+    .err { color: #f87171; }
+    .ok { color: #4ade80; }
+    .netbar { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; font-size: 0.8rem; color: #9aa7b5; line-height: 1.45; }
+    .netbar strong { color: #e8edf2; font-weight: 600; }
+    .netbar.offline { border-color: #7f1d1d; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Rede Wi-Fi do leitor</h1>
+    <p>
+      O leitor precisa de uma rede 2,4 GHz com acesso ao Identity. Escolha a rede, informe a senha
+      e aguarde a conexão; depois siga para o provisionamento.
+    </p>
+
+    <div id="netbar" class="netbar">Verificando rede…</div>
+
+    <form id="wifi-form">
+      <label>PIN de fábrica (se configurado)
+        <input name="pin" type="password" autocomplete="off" />
+      </label>
+      <label>Redes encontradas
+        <select id="ssid-list"><option value="">Buscando…</option></select>
+      </label>
+      <label>Nome da rede (SSID)
+        <input name="ssid" required autocomplete="off" placeholder="Rede-Portaria" />
+      </label>
+      <label>Senha
+        <input name="password" type="password" autocomplete="off" placeholder="Deixe vazio para rede aberta" />
+      </label>
+      <button type="submit">Conectar</button>
+      <button type="button" class="secondary" id="rescan">Buscar redes novamente</button>
+      <div id="msg" class="msg"></div>
+    </form>
+  </main>
+  <script>
+    const netbar = document.getElementById('netbar');
+    const list = document.getElementById('ssid-list');
+    const ssidInput = document.querySelector('input[name="ssid"]');
+    const msg = document.getElementById('msg');
+
+    async function refreshStatus() {
+      try {
+        const res = await fetch('/api/setup');
+        const data = await res.json();
+        const net = data.network || {};
+        if (net.connected) {
+          netbar.className = 'netbar';
+          netbar.innerHTML = '<strong>Conectado a</strong> ' + (net.ssid || '—') + ' · IP ' + (net.ip || '—') +
+            '<br /><a href="/setup">Ir para o provisionamento</a>';
+        } else {
+          netbar.className = 'netbar offline';
+          netbar.innerHTML = '<strong>Ainda sem conexão.</strong> Rede configurada: ' + (net.ssid || 'nenhuma');
+        }
+      } catch (err) {
+        netbar.className = 'netbar offline';
+        netbar.textContent = 'Não foi possível ler o status do leitor.';
+      }
+    }
+
+    async function scan() {
+      list.innerHTML = '<option value="">Buscando…</option>';
+      try {
+        const res = await fetch('/api/setup/wifi/scan');
+        const data = await res.json();
+        const networks = data.networks || [];
+        if (networks.length === 0) {
+          list.innerHTML = '<option value="">Nenhuma rede encontrada</option>';
+          return;
+        }
+        list.innerHTML = '<option value="">Selecione…</option>' + networks
+          .map((n) => '<option value="' + n.ssid.replace(/"/g, '&quot;') + '">' +
+            n.ssid + ' (' + n.rssi + ' dBm' + (n.secure ? '' : ', aberta') + ')</option>')
+          .join('');
+      } catch (err) {
+        list.innerHTML = '<option value="">Falha ao buscar redes</option>';
+      }
+    }
+
+    list.addEventListener('change', () => {
+      if (list.value) ssidInput.value = list.value;
+    });
+    document.getElementById('rescan').addEventListener('click', scan);
+
+    document.getElementById('wifi-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = '';
+      msg.className = 'msg';
+      const fd = new FormData(e.target);
+      const btn = e.target.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/setup/wifi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pin: fd.get('pin') || '',
+            ssid: fd.get('ssid'),
+            password: fd.get('password') || '',
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          msg.textContent = data.error || 'Falha ao salvar a rede.';
+          msg.className = 'msg err';
+          return;
+        }
+        // The SoftAP drops as soon as the station associates, so this page may
+        // stop responding. That is the success signal for the technician.
+        msg.textContent = data.message || 'Credenciais salvas.';
+        msg.className = 'msg ok';
+      } catch (err) {
+        msg.textContent = String(err);
+        msg.className = 'msg err';
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    refreshStatus();
+    setInterval(refreshStatus, 4000);
+    scan();
+  </script>
+</body>
+</html>

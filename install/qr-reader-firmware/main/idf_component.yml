@@ -1,0 +1,6 @@
+dependencies:
+  idf: ">=5.1"
+  # LAN discovery: advertises <hostname>.local so /setup works without an IP.
+  espressif/mdns: "^1.2.0"
+  # Wear-levelled filesystem for config.json and the policy snapshot.
+  joltwallet/littlefs: "^1.14.0"

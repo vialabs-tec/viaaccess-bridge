@@ -1,0 +1,43 @@
+# Target: ESP32-S3 N16R8 (16 MB flash, 8 MB octal PSRAM).
+CONFIG_IDF_TARGET="esp32s3"
+
+# Flash layout.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Octal PSRAM. This is what makes GPIO 33-37 unavailable on this module, so the
+# factory pin map in viaaccess/config.hpp stays in the low bank.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# TLS to Identity uses the bundled CA roots; the appliance ships no pinned cert.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+
+# Dynamic QR URLs carry a JWT, so both the local server and the client need
+# headroom above the stock limits.
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=1024
+CONFIG_HTTPD_ERR_RESP_NO_DELAY=y
+
+# The Pi got these from harden-os.sh; on the S3 they are firmware settings.
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+CONFIG_ESP_INT_WDT=y
+CONFIG_ESP_BROWNOUT_DET=y
+CONFIG_ESP_BROWNOUT_DET_LVL_SEL_7=y
+
+# Keep the previous slot bootable until the new image confirms itself.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+CONFIG_FREERTOS_HZ=1000
+CONFIG_LWIP_LOCAL_HOSTNAME="viaaccess-qr"

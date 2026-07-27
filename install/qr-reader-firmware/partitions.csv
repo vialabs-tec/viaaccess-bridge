@@ -1,0 +1,15 @@
+# ESP32-S3 N16R8 (16 MB flash).
+#
+# Two 4 MB app slots give room for TLS plus the embedded setup UI and keep OTA
+# A/B rollback available, which is what makes remote UPDATE safe on a door.
+# LittleFS ("storage") holds config.json, the policy snapshot and, once
+# contingency lands, the outbox and consumed-intent stores. Secrets (device key,
+# Wi-Fi password) live in NVS instead, never on the filesystem image.
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x6000,
+otadata,    data, ota,      0xf000,   0x2000,
+phy_init,   data, phy,      0x11000,  0x1000,
+ota_0,      app,  ota_0,    0x20000,  0x400000,
+ota_1,      app,  ota_1,    0x420000, 0x400000,
+storage,    data, spiffs,   0x820000, 0x180000,

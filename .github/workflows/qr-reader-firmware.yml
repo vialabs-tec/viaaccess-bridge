@@ -1,0 +1,77 @@
+name: QR reader firmware
+
+on:
+  push:
+    branches: [main]
+    tags: ["qr-reader-firmware-v*"]
+    paths:
+      - "install/qr-reader-firmware/**"
+      - ".github/workflows/qr-reader-firmware.yml"
+  pull_request:
+    paths:
+      - "install/qr-reader-firmware/**"
+      - ".github/workflows/qr-reader-firmware.yml"
+
+jobs:
+  host-tests:
+    name: host tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: install/qr-reader-firmware
+    steps:
+      - uses: actions/checkout@v4
+
+      # The shared logic in components/viaaccess_core builds with the host
+      # compiler, so a regression in a passage decision fails here in seconds,
+      # before the much slower firmware build starts.
+      - name: make -C test/host
+        run: make -C test/host
+
+  firmware:
+    name: idf.py build
+    runs-on: ubuntu-latest
+    needs: host-tests
+    container: espressif/idf:release-v5.5
+    defaults:
+      run:
+        working-directory: install/qr-reader-firmware
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      # A tag stamps its own version, everything else is a dev build. The value
+      # lands in X-ViaAccess-Agent-Version and in /health as agentVersion.
+      - name: Resolve firmware version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/qr-reader-firmware-v* ]]; then
+            echo "value=${GITHUB_REF#refs/tags/qr-reader-firmware-v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: idf.py build
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py set-target esp32s3
+          idf.py -DVIAACCESS_FIRMWARE_VERSION="${{ steps.version.outputs.value }}" build
+
+      - name: Flash footprint
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py size
+
+      # These four images plus flasher_args.json are everything esptool needs, so
+      # a technician can flash a release without an ESP-IDF install.
+      # ota_data_initial.bin is what points a fresh board at ota_0.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qr-reader-firmware-${{ steps.version.outputs.value }}
+          path: |
+            install/qr-reader-firmware/build/viaaccess-qr-firmware.bin
+            install/qr-reader-firmware/build/bootloader/bootloader.bin
+            install/qr-reader-firmware/build/partition_table/partition-table.bin
+            install/qr-reader-firmware/build/ota_data_initial.bin
+            install/qr-reader-firmware/build/flasher_args.json
+          if-no-files-found: error

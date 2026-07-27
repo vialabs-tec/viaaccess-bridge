@@ -1,0 +1,12 @@
+# ESP-IDF build artifacts.
+build/
+managed_components/
+dependencies.lock
+
+# Generated from sdkconfig.defaults on the first build; never commit it, the
+# defaults file is the source of truth for the appliance configuration.
+sdkconfig
+sdkconfig.old
+
+# Host test binary.
+test/host/build/
