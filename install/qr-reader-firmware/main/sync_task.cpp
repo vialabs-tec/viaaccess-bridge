@@ -12,6 +12,7 @@
 #include "identity_client.hpp"
 #include "relay.hpp"
 #include "storage.hpp"
+#include "viaaccess/commands.hpp"
 #include "viaaccess/poll.hpp"
 #include "wifi_manager.hpp"
 
@@ -116,23 +117,30 @@ void PolicyLoop(void* /*argument*/) {
 identity::Outcome ExecuteCommand(const viaaccess::RuntimeConfig& cfg,
                                  const identity::PendingCommand& command,
                                  bool* reboot_after_ack) {
-  if (command.type == "reboot" || command.type == "restart") {
-    *reboot_after_ack = true;
-    return identity::AckCommand(cfg, command.id, true, "");
-  }
-  if (command.type == "unlock" || command.type == "open_door") {
-    const esp_err_t pulsed = relay::Pulse();
-    return identity::AckCommand(cfg, command.id, pulsed == ESP_OK,
-                                pulsed == ESP_OK ? "" : esp_err_to_name(pulsed));
-  }
-  if (command.type == "sync" || command.type == "resync") {
-    SyncPolicy(cfg);
-    return identity::AckCommand(cfg, command.id, true, "");
-  }
-  if (command.type == "reset" || command.type == "unprovision") {
-    const identity::Outcome acked = identity::AckCommand(cfg, command.id, true, "");
-    app::State::Instance().EnterSetupMode("reset command from Identity");
-    return acked;
+  switch (viaaccess::ParseCommandAction(command.type)) {
+    case viaaccess::CommandAction::kReboot:
+      *reboot_after_ack = true;
+      return identity::AckCommand(cfg, command.id, true, "");
+    case viaaccess::CommandAction::kUnlock: {
+      const esp_err_t pulsed = relay::Pulse();
+      return identity::AckCommand(cfg, command.id, pulsed == ESP_OK,
+                                  pulsed == ESP_OK ? "" : esp_err_to_name(pulsed));
+    }
+    case viaaccess::CommandAction::kSync:
+      SyncPolicy(cfg);
+      return identity::AckCommand(cfg, command.id, true, "");
+    case viaaccess::CommandAction::kReset: {
+      const identity::Outcome acked = identity::AckCommand(cfg, command.id, true, "");
+      app::State::Instance().EnterSetupMode("reset command from Identity");
+      return acked;
+    }
+    case viaaccess::CommandAction::kUpdate:
+      ESP_LOGW(kTag, "command %s asks for OTA, which this firmware cannot apply yet",
+               command.id.c_str());
+      return identity::AckCommand(cfg, command.id, false,
+                                  "OTA not supported by esp32 firmware yet");
+    case viaaccess::CommandAction::kUnknown:
+      break;
   }
   ESP_LOGW(kTag, "command %s of type %s is not supported by this firmware",
            command.id.c_str(), command.type.c_str());

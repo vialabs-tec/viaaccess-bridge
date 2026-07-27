@@ -4,6 +4,7 @@
 idf_component_register(
   SRCS
     "src/clock.cpp"
+    "src/commands.cpp"
     "src/config.cpp"
     "src/ds3231.cpp"
     "src/hostname.cpp"
