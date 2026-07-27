@@ -38,9 +38,13 @@ The map below also avoids the strapping pins (0, 3, 45, 46), the native USB pair
 | Door contact (reed) | 11 | active low, closed door pulls LOW |
 | Exit button (REX) | 12 | active low |
 | Status LED R / G / B | 4 / 5 / 6 | R stale, G online, B setup |
-| Reader UART RX | 17 | to the module TX |
-| Reader UART TX | 18 | to the module RX |
+| Reader UART RX | 17 | to the module TX, 9600 8N1 |
+| Reader UART TX | 18 | to the module RX, 9600 8N1 |
 | RTC SDA / SCL | 8 / 9 | I2C, DS3231 at 0x68 |
+
+The EP8280L ships in USB HID mode, which is what the Pi uses. Here it has to be in
+TTL serial mode at 9600 baud, one scan per line; the Pi's keyboard-wedge path has
+no equivalent on this board.
 
 Defaults live in `components/viaaccess_core/include/viaaccess/config.hpp` and can
 be overridden per install in the advanced section of `/setup`. The I2C pins are
@@ -204,6 +208,27 @@ counterpart because the Pi gets its date from the distribution.
 
 If the network is wrong or the password changed, five failed association attempts
 bring the SoftAP back so no serial cable is needed.
+
+### What the setup form asks for
+
+The provisioning panel shows a single field in the normal path, and reveals the
+other two only when they can actually be used:
+
+| Field | When it shows |
+|---|---|
+| Provisioning URL or token | Always; the one thing a technician must paste |
+| Identity URL | Only when the pasted text is not a full URL, since a bare `clm_` token carries no host |
+| Factory PIN | Only when `/api/setup` answers `pinRequired`, which needs `setupPin` in `config.json` |
+
+Prefer the full URL from the Identity admin panel: it already carries the host, so
+the form stays at one field. If the claim answers with a loopback `identityUrl`
+(a dev server behind `APP_URL=localhost`), the appliance keeps the host that
+actually worked instead of storing an address it cannot reach.
+
+The advanced block is collapsed on purpose. Opening it sends the whole hardware
+map with the request, so an installer who wired something other than the factory
+pins should open it; leaving it closed keeps the factory map and, on a
+reprovision, whatever pins were already stored.
 
 ## HTTP surface
 

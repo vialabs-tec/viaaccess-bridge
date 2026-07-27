@@ -15,6 +15,9 @@
     .hint-url code { color: #e8edf2; font-size: 0.85rem; }
     label { display: block; margin-top: 1rem; font-size: 0.85rem; }
     label.check { display: flex; align-items: center; gap: 0.55rem; cursor: pointer; }
+    /* Author rules for label beat the UA sheet, so hidden needs to say it louder. */
+    [hidden] { display: none !important; }
+    .field-hint { display: block; margin-top: 0.35rem; font-size: 0.75rem; color: #9aa7b5; line-height: 1.4; }
     input, select, textarea { width: 100%; margin-top: 0.35rem; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: inherit; box-sizing: border-box; }
     label.check input[type="checkbox"] { width: 1rem; height: 1rem; margin: 0; padding: 0; flex-shrink: 0; accent-color: #3b82f6; }
     textarea { min-height: 4.5rem; font-family: ui-monospace, monospace; font-size: 0.8rem; }
@@ -41,7 +44,7 @@
   <main>
     <h1>ViaAccess QR Reader</h1>
     <p>Provisionamento zero-touch: cole o claim do admin. GPIO/relé usam o mapa de fábrica.</p>
-    <p class="hint-url">Prefira <code>http://viaaccess-qr.local:3710/setup</code> (mesma Wi‑Fi). Se não resolver, use o IP mostrado abaixo.</p>
+    <p class="hint-url">Prefira <code id="hint-url">http://viaaccess-qr.local:3710/setup</code> (mesma Wi‑Fi). Se não resolver, use o IP mostrado abaixo.</p>
 
     <div id="netbar" class="netbar">Verificando rede…</div>
 
@@ -52,14 +55,16 @@
 
     <div id="panel-provision" class="panel active">
       <form id="provision-form">
-        <label>PIN de fábrica (se configurado)
+        <label class="pin-field" hidden>PIN de fábrica
           <input name="pin" type="password" autocomplete="off" />
         </label>
         <label>URL ou token de provisionamento
           <textarea name="claimInput" required placeholder="https://…/bridge/provision?t=clm_… ou só clm_…"></textarea>
         </label>
-        <label>URL do Identity (obrigatória se colar só o token clm_)
+        <label id="provision-identity" hidden>URL do Identity
           <input name="identityUrl" placeholder="http://192.168.x.x:3100" />
+          <span class="field-hint">O token colado não traz o endereço do Identity. Use o mesmo
+            host do admin, alcançável desta rede.</span>
         </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
@@ -126,7 +131,7 @@
 
     <div id="panel-manual" class="panel">
       <form id="setup-form">
-        <label>PIN de fábrica (se configurado)
+        <label class="pin-field" hidden>PIN de fábrica
           <input name="pin" type="password" autocomplete="off" />
         </label>
         <label>URL do Identity
@@ -203,6 +208,8 @@
   </main>
   <script>
     const netbar = document.getElementById('netbar');
+    const hintUrl = document.getElementById('hint-url');
+    const pinFields = document.querySelectorAll('.pin-field');
 
     async function refreshStatus() {
       try {
@@ -210,6 +217,11 @@
         const data = await res.json();
         const net = data.network || {};
         const clock = data.clock || {};
+        // Only a factory image with setupPin in config.json needs the field, so
+        // asking every installer for a PIN that does not exist is pure noise.
+        pinFields.forEach((field) => { field.hidden = !data.pinRequired; });
+        hintUrl.textContent = 'http://' + (data.mdnsHostname || 'viaaccess-qr') +
+          '.local:' + (data.httpPort || 3710) + '/setup';
         if (net.connected) {
           netbar.className = 'netbar';
           netbar.innerHTML = '<strong>Rede:</strong> ' + (net.ssid || '—') + ' · IP ' + (net.ip || '—') +
@@ -240,6 +252,21 @@
         document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
       });
     });
+
+    const claimInput = document.querySelector('#provision-form [name="claimInput"]');
+    const provisionIdentity = document.getElementById('provision-identity');
+    const provisionIdentityInput = provisionIdentity.querySelector('input');
+
+    // A full provisioning URL carries the host, so the only case that still needs
+    // it typed is a bare clm_ token copied from the Identity provisioning page.
+    function syncIdentityField() {
+      const value = claimInput.value.trim();
+      const needsHost = value !== '' && !/^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+      provisionIdentity.hidden = !needsHost;
+      provisionIdentityInput.required = needsHost;
+    }
+    claimInput.addEventListener('input', syncIdentityField);
+    syncIdentityField();
 
     function hardwarePayload(fd, advancedOpen) {
       if (!advancedOpen) return {};
