@@ -80,6 +80,10 @@ class State {
   void set_relay_simulated(bool simulated);
   void set_wifi(WifiPhase phase, const std::string& ssid, const std::string& ip);
   void set_reader_stats(bool driver_ready, uint32_t scans, uint32_t dropped_lines);
+  // Door contact publishes its own snapshot; HealthJson must not call back into
+  // the driver (the watcher already holds that mutex when it updates State).
+  void set_door_contact(bool enabled, bool simulated, bool ready, int gpio_pin,
+                        const std::string& state);
   void set_simulated_door_state(const std::string& state);
   void set_simulated_exit_state(const std::string& state);
 
@@ -118,6 +122,12 @@ class State {
   bool reader_driver_ready_ = false;
   uint32_t reader_scans_ = 0;
   uint32_t reader_dropped_lines_ = 0;
+
+  bool door_enabled_ = false;
+  bool door_simulated_ = false;
+  bool door_ready_ = false;
+  int door_gpio_pin_ = 0;
+  std::string door_state_;
 
   std::string simulated_door_state_;
   std::string simulated_exit_state_;

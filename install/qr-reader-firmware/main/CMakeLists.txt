@@ -4,6 +4,7 @@ idf_component_register(
     "app_state.cpp"
     "clock_service.cpp"
     "config_json.cpp"
+    "door_contact.cpp"
     "ds3231_driver.cpp"
     "http_server.cpp"
     "identity_client.cpp"

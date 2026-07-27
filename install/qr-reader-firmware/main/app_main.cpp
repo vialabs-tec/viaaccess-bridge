@@ -9,6 +9,7 @@
 #include "app_state.hpp"
 #include "clock_service.hpp"
 #include "config_json.hpp"
+#include "door_contact.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -106,12 +107,14 @@ extern "C" void app_main() {
 
   ESP_ERROR_CHECK_WITHOUT_ABORT(relay::Init(boot.relay));
   state.set_relay_simulated(!relay::available());
+  ESP_ERROR_CHECK_WITHOUT_ABORT(door_contact::Start(boot.door_contact));
 
   state.set_on_config_applied([](const viaaccess::RuntimeConfig& cfg) {
     // Setup and Identity device-config can both move pins, pulse width, the
     // reader baud rate or the HTTP port; re-arm the drivers in place.
     ESP_ERROR_CHECK_WITHOUT_ABORT(relay::ApplyConfig(cfg.relay));
     app::State::Instance().set_relay_simulated(!relay::available());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(door_contact::ApplyConfig(cfg.door_contact));
     ESP_ERROR_CHECK_WITHOUT_ABORT(qr_reader::ApplyConfig(cfg.qr_reader));
     ESP_ERROR_CHECK_WITHOUT_ABORT(http_server::ApplyPort(cfg.http_port));
   });

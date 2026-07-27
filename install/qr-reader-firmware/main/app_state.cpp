@@ -261,6 +261,21 @@ void State::set_reader_stats(bool driver_ready, uint32_t scans, uint32_t dropped
   reader_dropped_lines_ = dropped_lines;
 }
 
+void State::set_door_contact(bool enabled, bool simulated, bool ready, int gpio_pin,
+                             const std::string& state) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  door_enabled_ = enabled;
+  door_simulated_ = simulated;
+  door_ready_ = ready;
+  door_gpio_pin_ = gpio_pin;
+  door_state_ = state;
+  if (simulated) {
+    simulated_door_state_ = state;
+  } else {
+    simulated_door_state_.clear();
+  }
+}
+
 void State::set_simulated_door_state(const std::string& state) {
   std::lock_guard<std::mutex> lock(mutex_);
   simulated_door_state_ = state;
@@ -377,17 +392,26 @@ std::string State::HealthJson() const {
   cJSON_AddBoolToObject(root, "identityReachable", identity_reachable_);
   cJSON_AddBoolToObject(root, "relaySimulated", relay_simulated_);
 
-  // Reed switch, REX button and the RGB status LED are wired in step 5; the
-  // config already carries their pins so /setup can show the factory map.
+  // REX button and the RGB status LED are still pending; the reed switch is live.
   cJSON* status_led = cJSON_AddObjectToObject(root, "statusLed");
   cJSON_AddBoolToObject(status_led, "enabled", config_.status_led.enabled);
   cJSON_AddStringToObject(status_led, "driver", "pending");
 
   cJSON* door = cJSON_AddObjectToObject(root, "doorContact");
-  cJSON_AddBoolToObject(door, "enabled", config_.door_contact.enabled);
-  cJSON_AddBoolToObject(door, "simulated", config_.door_contact.simulated);
-  cJSON_AddStringToObject(door, "driver", "pending");
-  AddNullableString(door, "simulatedState", simulated_door_state_);
+  cJSON_AddBoolToObject(door, "enabled", door_enabled_);
+  if (door_enabled_) {
+    cJSON_AddBoolToObject(door, "simulated", door_simulated_);
+    cJSON_AddBoolToObject(door, "ready", door_ready_);
+    cJSON_AddNumberToObject(door, "gpioPin", door_gpio_pin_);
+    if (!door_state_.empty()) {
+      cJSON_AddStringToObject(door, "state", door_state_.c_str());
+    } else {
+      cJSON_AddNullToObject(door, "state");
+    }
+    if (door_simulated_) {
+      AddNullableString(door, "simulatedState", simulated_door_state_);
+    }
+  }
 
   cJSON* exit_button = cJSON_AddObjectToObject(root, "exitButton");
   cJSON_AddBoolToObject(exit_button, "enabled", config_.exit_button.enabled);

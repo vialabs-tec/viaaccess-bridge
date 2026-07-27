@@ -15,6 +15,7 @@ SOURCES := \
 	test_clock.cpp \
 	test_commands.cpp \
 	test_config.cpp \
+	test_door_contact.cpp \
 	test_ds3231.cpp \
 	test_hostname.cpp \
 	test_line_buffer.cpp \

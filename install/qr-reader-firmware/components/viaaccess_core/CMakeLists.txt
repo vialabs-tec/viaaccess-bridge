@@ -6,6 +6,7 @@ idf_component_register(
     "src/clock.cpp"
     "src/commands.cpp"
     "src/config.cpp"
+    "src/door_contact.cpp"
     "src/ds3231.cpp"
     "src/hostname.cpp"
     "src/line_buffer.cpp"

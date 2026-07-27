@@ -12,6 +12,7 @@
 #include "esp_timer.h"
 #include "identity_client.hpp"
 #include "relay.hpp"
+#include "door_contact.hpp"
 #include "scan_service.hpp"
 #include "viaaccess/clock.hpp"
 #include "viaaccess/config.hpp"
@@ -636,11 +637,11 @@ esp_err_t HandleDoorContactSim(httpd_req_t* req) {
     return SendError(req, 400, "state deve ser open ou closed.");
   }
 
-  app::State::Instance().set_simulated_door_state(state);
-  const identity::Outcome outcome =
-      identity::PostDoorContactEvent(cfg, state == "open" ? "opened" : "closed");
-  if (!outcome.ok) {
-    return SendError(req, 502, outcome.error);
+  // Same as the Go agent: flip the virtual reed and let the watcher debounce
+  // and POST. Posting here would skip held_open and race the real path.
+  const esp_err_t set = door_contact::SetSimOpen(state == "open");
+  if (set != ESP_OK) {
+    return SendError(req, 409, "Simulador de porta indisponível.");
   }
 
   cJSON* root = cJSON_CreateObject();

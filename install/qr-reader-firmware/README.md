@@ -164,6 +164,36 @@ the device key, the Identity URL and the Wi-Fi credentials, and it never calls
 Identity, so a pin can be corrected during an outage without a new claim from the
 admin.
 
+### Wiring the door contact (MC38)
+
+Reed switch, normally closed when the door is shut. No polarity: either wire to
+**GPIO 11**, the other to **GND**. The firmware enables the internal pull-up, so
+closed door = LOW and open door = HIGH (`activeLow: true`). A series ~1 kΩ on the
+GPIO leg is optional protection.
+
+| MC38 | ESP32-S3 |
+|---|---|
+| One wire | GPIO 11 |
+| Other wire | GND |
+
+On boot the first reading is seeded without posting, so a door already open does
+not look like a forced entry. After debounce (50 ms) the appliance posts
+`opened` / `closed` to Identity, and `held_open` once the door has stayed open
+past `heldOpenAfterMs` (60 s by default). `/health` reports
+`doorContact.state` as `open` / `closed` / `unknown`.
+
+Homologation without the reed: **Fiação** → mark *Simular*, then
+
+```bash
+curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/door-contact/sim \
+  -H 'Content-Type: application/json' -d '{"state":"open"}'
+curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/door-contact/sim \
+  -H 'Content-Type: application/json' -d '{"state":"closed"}'
+```
+
+The sim endpoint only flips the virtual reed; the watcher still debounces and
+POSTs, so `held_open` fires the same way as with hardware.
+
 ### Wiring the EP8280L
 
 The module ships as a USB HID keyboard ("USB-KBW"), which the S3 cannot host. Two
@@ -199,6 +229,7 @@ main/                       ESP-IDF application
   qr_reader.cpp             EP8280L over UART
   sync_task.cpp             60 s policy loop + command loop
   relay.cpp                 lock output
+  door_contact.cpp          MC38 reed (GPIO or simulated)
   web/                      embedded setup and Wi-Fi pages
 scripts/homologate.sh       field checklist against a flashed appliance
 test/host/                  host unit tests for viaaccess_core
@@ -402,9 +433,9 @@ Deliberate gaps, listed so nobody assumes parity with the Pi:
   never entered: with Identity unreachable a scan is refused with `SYNC_STALE`
   (fail closed). The switch is `app::kLocalContingencySupported` in
   `main/app_state.hpp`.
-- **Door contact, REX button and status LED drivers.** The pins, the config and
-  the simulation endpoints exist; the GPIO interrupt handling and the LED state
-  machine do not, so `/health` reports `driver: "pending"` for them.
+- **REX button and status LED drivers.** The pins, the config and the simulation
+  endpoint for the exit button exist; the GPIO interrupt handling and the LED
+  state machine do not, so `/health` reports `driver: "pending"` for them.
 - **OTA download.** The partition table reserves both slots and rollback is on,
   but an `update` command is acknowledged as unsupported rather than silently
   dropped.
