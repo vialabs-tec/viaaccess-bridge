@@ -291,6 +291,18 @@ void State::set_exit_button(bool enabled, bool simulated, bool ready, int gpio_p
   }
 }
 
+void State::set_status_led(bool enabled, bool ready, const std::string& pattern, bool red,
+                           bool green, bool blue, bool blink) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  led_enabled_ = enabled;
+  led_ready_ = ready;
+  led_pattern_ = pattern;
+  led_red_ = red;
+  led_green_ = green;
+  led_blue_ = blue;
+  led_blink_ = blink;
+}
+
 void State::set_simulated_door_state(const std::string& state) {
   std::lock_guard<std::mutex> lock(mutex_);
   simulated_door_state_ = state;
@@ -407,10 +419,17 @@ std::string State::HealthJson() const {
   cJSON_AddBoolToObject(root, "identityReachable", identity_reachable_);
   cJSON_AddBoolToObject(root, "relaySimulated", relay_simulated_);
 
-  // Status LED is still pending; reed and REX are live.
   cJSON* status_led = cJSON_AddObjectToObject(root, "statusLed");
-  cJSON_AddBoolToObject(status_led, "enabled", config_.status_led.enabled);
-  cJSON_AddStringToObject(status_led, "driver", "pending");
+  cJSON_AddBoolToObject(status_led, "enabled", led_enabled_);
+  if (led_enabled_) {
+    cJSON_AddStringToObject(status_led, "module", "KY-016");
+    cJSON_AddBoolToObject(status_led, "ready", led_ready_);
+    cJSON_AddStringToObject(status_led, "pattern", led_pattern_.c_str());
+    cJSON_AddBoolToObject(status_led, "red", led_red_);
+    cJSON_AddBoolToObject(status_led, "green", led_green_);
+    cJSON_AddBoolToObject(status_led, "blue", led_blue_);
+    cJSON_AddBoolToObject(status_led, "blink", led_blink_);
+  }
 
   cJSON* door = cJSON_AddObjectToObject(root, "doorContact");
   cJSON_AddBoolToObject(door, "enabled", door_enabled_);

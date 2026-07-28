@@ -86,6 +86,8 @@ class State {
                         const std::string& state);
   void set_exit_button(bool enabled, bool simulated, bool ready, int gpio_pin,
                        const std::string& state);
+  void set_status_led(bool enabled, bool ready, const std::string& pattern, bool red,
+                      bool green, bool blue, bool blink);
   void set_simulated_door_state(const std::string& state);
   void set_simulated_exit_state(const std::string& state);
 
@@ -136,6 +138,14 @@ class State {
   bool exit_ready_ = false;
   int exit_gpio_pin_ = 0;
   std::string exit_state_;
+
+  bool led_enabled_ = false;
+  bool led_ready_ = false;
+  std::string led_pattern_;
+  bool led_red_ = false;
+  bool led_green_ = false;
+  bool led_blue_ = false;
+  bool led_blink_ = false;
 
   std::string simulated_door_state_;
   std::string simulated_exit_state_;

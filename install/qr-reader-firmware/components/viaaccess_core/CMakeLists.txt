@@ -16,6 +16,7 @@ idf_component_register(
     "src/provision.cpp"
     "src/redeem.cpp"
     "src/scan.cpp"
+    "src/status_led.cpp"
     "src/strings.cpp"
     "src/time.cpp"
   INCLUDE_DIRS "include"

@@ -12,6 +12,7 @@
 #include "door_contact.hpp"
 #include "esp_err.h"
 #include "exit_button.hpp"
+#include "status_led.hpp"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "http_server.hpp"
@@ -110,6 +111,7 @@ extern "C" void app_main() {
   state.set_relay_simulated(!relay::available());
   ESP_ERROR_CHECK_WITHOUT_ABORT(door_contact::Start(boot.door_contact));
   ESP_ERROR_CHECK_WITHOUT_ABORT(exit_button::Start(boot.exit_button));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(status_led::Start(boot.status_led));
 
   state.set_on_config_applied([](const viaaccess::RuntimeConfig& cfg) {
     // Setup and Identity device-config can both move pins, pulse width, the
@@ -118,6 +120,7 @@ extern "C" void app_main() {
     app::State::Instance().set_relay_simulated(!relay::available());
     ESP_ERROR_CHECK_WITHOUT_ABORT(door_contact::ApplyConfig(cfg.door_contact));
     ESP_ERROR_CHECK_WITHOUT_ABORT(exit_button::ApplyConfig(cfg.exit_button));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(status_led::ApplyConfig(cfg.status_led));
     ESP_ERROR_CHECK_WITHOUT_ABORT(qr_reader::ApplyConfig(cfg.qr_reader));
     ESP_ERROR_CHECK_WITHOUT_ABORT(http_server::ApplyPort(cfg.http_port));
   });

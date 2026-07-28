@@ -215,6 +215,27 @@ curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/exit-button/sim \
   -H 'Content-Type: application/json' -d '{"state":"idle"}'
 ```
 
+### Wiring the status LED (KY-016)
+
+RGB module, **common cathode**, resistors already on the board. Factory map:
+
+| KY-016 | ESP32-S3 |
+|---|---|
+| GND | GND |
+| R | GPIO 4 |
+| G | GPIO 5 |
+| B | GPIO 6 |
+
+| Mode | Channel | Pattern |
+|---|---|---|
+| `ONLINE` | Green | Solid |
+| `SYNC_STALE` | Red | Solid |
+| `CONTINGENCY` | Red | Blink |
+| `SETUP` | Blue | Blink |
+
+`/health` reports `statusLed.module: "KY-016"` with the active pattern name. No SoftAP
+portal field is needed: the factory pins apply unless `config.json` overrides them.
+
 ### Wiring the EP8280L
 
 The module ships as a USB HID keyboard ("USB-KBW"), which the S3 cannot host. Two
@@ -252,6 +273,7 @@ main/                       ESP-IDF application
   relay.cpp                 lock output
   door_contact.cpp          MC38 reed (GPIO or simulated)
   exit_button.cpp           REX button (GPIO or simulated)
+  status_led.cpp            KY-016 RGB status (R/G/B)
   web/                      embedded setup and Wi-Fi pages
 scripts/homologate.sh       field checklist against a flashed appliance
 test/host/                  host unit tests for viaaccess_core
@@ -455,8 +477,6 @@ Deliberate gaps, listed so nobody assumes parity with the Pi:
   never entered: with Identity unreachable a scan is refused with `SYNC_STALE`
   (fail closed). The switch is `app::kLocalContingencySupported` in
   `main/app_state.hpp`.
-- **Status LED driver.** The pins and config exist; the KY-016 state machine does
-  not, so `/health` reports `driver: "pending"` for it.
 - **OTA download.** The partition table reserves both slots and rollback is on,
   but an `update` command is acknowledged as unsupported rather than silently
   dropped.
