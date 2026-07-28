@@ -4,6 +4,7 @@ idf_component_register(
     "app_state.cpp"
     "clock_service.cpp"
     "config_json.cpp"
+    "contingency_store.cpp"
     "door_contact.cpp"
     "ds3231_driver.cpp"
     "exit_button.cpp"

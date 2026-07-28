@@ -599,4 +599,57 @@ UnlockWebhookResult PostUnlockWebhook(const std::string& url,
   return result;
 }
 
+FlushResult FlushOutbox(const viaaccess::RuntimeConfig& cfg,
+                        const std::vector<viaaccess::OutboxEvent>& events) {
+  FlushResult result;
+  if (events.empty()) {
+    result.outcome.ok = true;
+    return result;
+  }
+
+  cJSON* root = cJSON_CreateObject();
+  cJSON* arr = cJSON_AddArrayToObject(root, "events");
+  for (const viaaccess::OutboxEvent& event : events) {
+    cJSON* item = cJSON_CreateObject();
+    cJSON_AddStringToObject(item, "intentId", event.intent_id.c_str());
+    cJSON_AddStringToObject(item, "memberId", event.member_id.c_str());
+    cJSON_AddStringToObject(item, "accessPointSlug", event.access_point_slug.c_str());
+    cJSON_AddStringToObject(item, "scannedAt",
+                            viaaccess::FormatRfc3339(event.scanned_at).c_str());
+    cJSON_AddItemToArray(arr, item);
+  }
+  cJSON_AddBoolToObject(root, "emitDetection", cfg.emit_detection);
+  char* printed = cJSON_PrintUnformatted(root);
+  std::string body = printed != nullptr ? printed : "{}";
+  cJSON_free(printed);
+  cJSON_Delete(root);
+
+  Request request;
+  request.url = BaseUrl(cfg.identity_url) + "/api/bridge/contingency/flush";
+  request.method = HTTP_METHOD_POST;
+  request.body = body;
+  request.bridge_headers = true;
+  request.timeout_ms = 20000;
+
+  const Response response = Perform(request, &cfg);
+  result.outcome = Classify("contingency flush", response);
+  if (!result.outcome.ok) {
+    return result;
+  }
+
+  cJSON* parsed = cJSON_Parse(response.body.c_str());
+  if (parsed != nullptr) {
+    const cJSON* flushed = cJSON_GetObjectItemCaseSensitive(parsed, "flushed");
+    const cJSON* skipped = cJSON_GetObjectItemCaseSensitive(parsed, "skipped");
+    if (cJSON_IsNumber(flushed)) {
+      result.flushed = flushed->valueint;
+    }
+    if (cJSON_IsNumber(skipped)) {
+      result.skipped = skipped->valueint;
+    }
+    cJSON_Delete(parsed);
+  }
+  return result;
+}
+
 }  // namespace identity

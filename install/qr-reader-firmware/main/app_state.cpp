@@ -3,6 +3,7 @@
 #include <ctime>
 
 #include "cJSON.h"
+#include "contingency_store.hpp"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "storage.hpp"
@@ -471,9 +472,8 @@ std::string State::HealthJson() const {
                           config_.contingency.max_policy_stale_hours);
   cJSON_AddStringToObject(contingency, "ticketVerify",
                           policy.ticket_verify_ready ? "ready" : "pending");
-  // Offline verification itself is step 6: the snapshot is stored and reported,
-  // but a scan that cannot reach Identity is refused rather than validated here.
-  cJSON_AddStringToObject(contingency, "localVerify", "pending");
+  cJSON_AddStringToObject(contingency, "localVerify",
+                          kLocalContingencySupported ? "ready" : "pending");
 
   cJSON* policy_sync = cJSON_AddObjectToObject(root, "policySync");
   AddNullableString(policy_sync, "syncedAt", viaaccess::FormatRfc3339(policy.synced_at));
@@ -488,7 +488,9 @@ std::string State::HealthJson() const {
   cJSON_AddNumberToObject(policy_sync, "maxStaleHours", policy.max_stale_hours);
 
   cJSON* outbox = cJSON_AddObjectToObject(root, "outbox");
-  cJSON_AddNumberToObject(outbox, "pending", 0);
+  cJSON_AddNumberToObject(outbox, "pending", contingency_store::OutboxPendingCount());
+  AddNullableString(outbox, "lastFlushAt",
+                    viaaccess::FormatRfc3339(contingency_store::OutboxLastFlushAt()));
 
   if (last_identity_check_ > 0) {
     cJSON_AddStringToObject(root, "lastIdentityCheck",

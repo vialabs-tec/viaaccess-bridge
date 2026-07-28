@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace viaaccess {
 
@@ -20,9 +21,15 @@ enum class ScanPath {
   kBlocked,
 };
 
-// PolicyState is the subset of the Identity policy snapshot that drives mode
-// and /health. Grant lists and the HMAC ticket key arrive with contingency
-// (step 6) and are not needed to decide the posture.
+// TicketVerify carries the HMAC key the appliance needs for offline JWT checks.
+struct TicketVerify {
+  std::string alg;
+  std::string key_b64;
+  std::string issuer;
+};
+
+// PolicyState is the Identity policy snapshot used for mode, /health and local
+// contingency verification.
 struct PolicyState {
   // Unix seconds; 0 means never synced.
   int64_t synced_at = 0;
@@ -33,15 +40,17 @@ struct PolicyState {
   int max_stale_hours = 0;
   bool ticket_verify_ready = false;
   std::string edge_policy_version;
+  TicketVerify ticket_verify;
+  std::vector<std::string> member_ids;
 };
 
 struct ModeInput {
   bool configured = false;
   bool identity_reachable = false;
   bool contingency_enabled = false;
-  // clock_trusted gates the offline path: ticket expiry, allowed hours and the
-  // audit timestamp queued in the outbox are all meaningless without a real
-  // clock, and a clock running behind makes an expired ticket look valid.
+  // clock_trusted gates the offline path: ticket expiry and the audit timestamp
+  // queued in the outbox are meaningless without a real clock, and a clock
+  // running behind makes an expired ticket look valid.
   bool clock_trusted = false;
   PolicyState policy;
   // Unix seconds.

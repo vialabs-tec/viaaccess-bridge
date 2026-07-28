@@ -12,6 +12,7 @@
 #include "esp_err.h"
 #include "viaaccess/config.hpp"
 #include "viaaccess/mode.hpp"
+#include "viaaccess/outbox.hpp"
 #include "viaaccess/redeem.hpp"
 
 namespace identity {
@@ -80,6 +81,12 @@ struct UnlockWebhookResult {
   std::string error;
 };
 
+struct FlushResult {
+  Outcome outcome;
+  int flushed = 0;
+  int skipped = 0;
+};
+
 // RedeemQrUrl posts the scanned URL to /api/bridge/intent/redeem. A status of 0
 // means the request never reached Identity, which is what triggers the
 // contingency path in the Go agent.
@@ -119,5 +126,9 @@ Outcome PostExitButtonEvent(const viaaccess::RuntimeConfig& cfg, const std::stri
 UnlockWebhookResult PostUnlockWebhook(const std::string& url,
                                       const UnlockWebhookPayload& payload,
                                       int timeout_ms);
+
+// FlushOutbox posts offline contingency passages to Identity.
+FlushResult FlushOutbox(const viaaccess::RuntimeConfig& cfg,
+                        const std::vector<viaaccess::OutboxEvent>& events);
 
 }  // namespace identity

@@ -18,13 +18,10 @@
 
 namespace app {
 
-// Offline validation (HMAC ticket verify, nonce store, outbox) is step 6 of the
-// port. Until it lands the appliance must never authorize a passage from the
-// local snapshot, so contingency is not offered as an operating mode: with
-// Identity unreachable the posture is SYNC_STALE and passage is refused, exactly
-// how the Go agent behaves when contingency is disabled. Flipping this to true
-// without implementing the verification would let any well-formed QR through.
-inline constexpr bool kLocalContingencySupported = false;
+// Offline validation (HMAC ticket verify, nonce store, outbox) is implemented;
+// contingency still requires config.contingency.enabled, a fresh policy snapshot
+// and a trusted clock before the appliance authorizes offline.
+inline constexpr bool kLocalContingencySupported = true;
 
 enum class WifiPhase {
   kBooting,

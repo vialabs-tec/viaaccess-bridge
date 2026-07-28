@@ -19,6 +19,10 @@ constexpr const char* kConfigPath = "/data/config.json";
 constexpr const char* kConfigTempPath = "/data/config.json.tmp";
 constexpr const char* kPolicyPath = "/data/policy-snapshot.json";
 constexpr const char* kPolicyTempPath = "/data/policy-snapshot.json.tmp";
+constexpr const char* kNoncePath = "/data/consumed-intents.json";
+constexpr const char* kNonceTempPath = "/data/consumed-intents.json.tmp";
+constexpr const char* kOutboxPath = "/data/outbox.json";
+constexpr const char* kOutboxTempPath = "/data/outbox.json.tmp";
 
 constexpr const char* kNvsNamespace = "viaaccess";
 constexpr const char* kNvsDeviceKey = "device_key";
@@ -166,5 +170,17 @@ esp_err_t SavePolicySnapshot(const std::string& json) {
 }
 
 std::string LoadPolicySnapshot() { return ReadFile(kPolicyPath); }
+
+esp_err_t SaveNonceStore(const std::string& json) {
+  return WriteFileAtomic(kNoncePath, kNonceTempPath, json);
+}
+
+std::string LoadNonceStore() { return ReadFile(kNoncePath); }
+
+esp_err_t SaveOutbox(const std::string& json) {
+  return WriteFileAtomic(kOutboxPath, kOutboxTempPath, json);
+}
+
+std::string LoadOutbox() { return ReadFile(kOutboxPath); }
 
 }  // namespace storage

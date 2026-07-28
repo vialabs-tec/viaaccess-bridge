@@ -5,6 +5,7 @@
 
 #include "app_state.hpp"
 #include "clock_service.hpp"
+#include "contingency_store.hpp"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -15,6 +16,9 @@
 #include "viaaccess/commands.hpp"
 #include "viaaccess/poll.hpp"
 #include "wifi_manager.hpp"
+
+#include <ctime>
+#include <vector>
 
 namespace sync_task {
 namespace {
@@ -54,6 +58,34 @@ void SyncPolicy(const viaaccess::RuntimeConfig& cfg) {
   }
   ESP_LOGI(kTag, "policy synced (grantVersion=%s, members=%d)",
            fetch.policy.grant_version.c_str(), fetch.policy.member_grant_count);
+}
+
+void FlushContingencyOutbox(const viaaccess::RuntimeConfig& cfg) {
+  const std::vector<viaaccess::OutboxEvent> pending =
+      contingency_store::PendingOutboxEvents();
+  if (pending.empty()) {
+    return;
+  }
+
+  identity::FlushResult flush = identity::FlushOutbox(cfg, pending);
+  if (HandleUnauthorized(flush.outcome, "contingency flush")) {
+    return;
+  }
+  if (!flush.outcome.ok) {
+    ESP_LOGW(kTag, "outbox flush failed: %s", flush.outcome.error.c_str());
+    return;
+  }
+  // Match the Go agent: clear the local queue when Identity accepted at least
+  // one event (skipped rows are already recorded server-side).
+  if (flush.flushed > 0) {
+    const esp_err_t cleared =
+        contingency_store::MarkOutboxFlushed(static_cast<int64_t>(std::time(nullptr)));
+    if (cleared != ESP_OK) {
+      ESP_LOGW(kTag, "outbox clear failed after flush: %s", esp_err_to_name(cleared));
+    } else {
+      ESP_LOGI(kTag, "outbox flushed: %d skipped=%d", flush.flushed, flush.skipped);
+    }
+  }
 }
 
 void SyncDeviceConfig(const viaaccess::RuntimeConfig& cfg) {
@@ -102,6 +134,7 @@ void PolicyLoop(void* /*argument*/) {
     if (cfg.configured && wifi::connected()) {
       SyncPolicy(cfg);
       SyncDeviceConfig(app::State::Instance().config());
+      FlushContingencyOutbox(app::State::Instance().config());
     }
     // Same cadence, off the HTTP thread: an I2C stall must not hold a /health
     // response, and enclosure temperature only needs minute resolution.

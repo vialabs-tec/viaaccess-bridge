@@ -15,6 +15,7 @@ SOURCES := \
 	test_clock.cpp \
 	test_commands.cpp \
 	test_config.cpp \
+	test_contingency.cpp \
 	test_door_contact.cpp \
 	test_ds3231.cpp \
 	test_exit_button.cpp \

@@ -450,42 +450,58 @@ additionally dump the Identity device-config.
 
 Four items still need someone at the door and are printed as a reminder at the
 end: a scan through the EP8280L itself rather than curl, a device key revoked in
-the dashboard returning the appliance to setup mode, a network outage blocking
-passage with `SYNC_STALE`, and (with the DS3231 fitted) a full power cut of a few
-minutes after which `/health` must come back with `clock.source: "RTC"` before any
-network is available.
+the dashboard returning the appliance to setup mode, a network outage exercising
+`CONTINGENCY` (fresh policy + trusted clock) or `SYNC_STALE` when those are
+missing, and (with the DS3231 fitted) a full power cut of a few minutes after
+which `/health` must come back with `clock.source: "RTC"` before any network is
+available.
 
 ## Persistence
 
 | Data | Where | Why |
 |---|---|---|
 | `config.json` | LittleFS `/data` | Same schema as the Pi, minus the secrets |
-| Policy snapshot | LittleFS `/data` | Restored on boot so `/health` knows policy age |
+| Policy snapshot | LittleFS `/data` | Restored on boot so `/health` knows policy age and CONTINGENCY can verify offline |
+| Consumed intents | LittleFS `/data` | Anti-replay nonce store for offline tickets |
+| Outbox | LittleFS `/data` | Offline passages waiting for Identity flush |
 | Device key | NVS | A dumped filesystem image must not leak credentials |
 | Wi-Fi password | NVS | Same reason |
 
 Writes are atomic (temp file plus rename), so a power cut during a save cannot
 leave a half-written config.
 
+## Offline contingency
+
+When Identity is unreachable (redeem timeout / status 0 / 5xx) and the appliance
+is in `CONTINGENCY` mode, a scan is validated locally instead of being refused:
+
+1. Parse the QR URL (`/r/{intentId}?st=…`)
+2. Verify the HS256 passage JWT against `ticketVerify` from the policy snapshot
+3. Check access-point slug, grant version, member grant list and ticket expiry
+4. Mark the intent consumed (nonce store) and enqueue an outbox event
+5. Pulse the relay / unlock webhook with a synthetic `AUTHORIZED` redeem
+
+`CONTINGENCY` requires `contingency.enabled`, a fresh policy snapshot, and a
+trusted clock (`RTC` or `NETWORK`). Without those, the posture stays
+`SYNC_STALE` and the scan is refused (fail closed). Client 4xx from online redeem
+never falls through to contingency.
+
+When the network returns, the policy sync loop posts pending outbox events to
+`POST /api/bridge/contingency/flush` and clears the local queue when Identity
+reports `flushed > 0`. `/health` exposes `contingency.localVerify: "ready"` and
+`outbox.pending`.
+
+Deferred vs the Pi agent: offline `after_hours` evaluation (needs a timezone
+database on flash).
+
 ## Not in this scaffold
 
 Deliberate gaps, listed so nobody assumes parity with the Pi:
 
-- **Offline contingency.** The snapshot is fetched and stored, and the clock trust
-  model that contingency depends on is in place, but local ticket verification,
-  the nonce store and the outbox are not implemented. Contingency is therefore
-  never entered: with Identity unreachable a scan is refused with `SYNC_STALE`
-  (fail closed). The switch is `app::kLocalContingencySupported` in
-  `main/app_state.hpp`.
 - **OTA download.** The partition table reserves both slots and rollback is on,
   but an `update` command is acknowledged as unsupported rather than silently
   dropped.
 - **NVS encryption.** Secrets are isolated in NVS so enabling encryption later
   does not change this code.
-- **Never run on hardware.** The firmware builds clean for esp32s3 on ESP-IDF
-  v5.5 (1.2 MB app, 71% of the slot free) and the host tests pass, but no board
-  has been flashed yet, so nothing below the API contract has been observed in
-  practice: PSRAM init, LittleFS on a real partition, the SoftAP portal, TLS to
-  Identity, the UART framing and the DS3231 on the I2C bus are all unverified
-  against silicon. The register level logic of the clock is unit tested, the
-  transport is not.
+- **Offline after_hours.** Contingency verifies ticket + grants, but does not
+  yet evaluate edge-policy time windows locally.

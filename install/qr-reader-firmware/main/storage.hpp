@@ -23,10 +23,16 @@ viaaccess::RuntimeConfig LoadConfig();
 // the secrets into NVS.
 esp_err_t SaveConfig(const viaaccess::RuntimeConfig& cfg);
 
-// SavePolicySnapshot keeps the raw Identity document: the fields contingency
-// needs (member grants, HMAC ticket key, edge policy) are preserved even though
-// the firmware currently parses only the subset that drives /health.
+// SavePolicySnapshot keeps the raw Identity document so a reboot can restore
+// grants and the HMAC ticket key without waiting for the next sync.
 esp_err_t SavePolicySnapshot(const std::string& json);
 std::string LoadPolicySnapshot();
 
+esp_err_t SaveNonceStore(const std::string& json);
+std::string LoadNonceStore();
+
+esp_err_t SaveOutbox(const std::string& json);
+std::string LoadOutbox();
+
 }  // namespace storage
+

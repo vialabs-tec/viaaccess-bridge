@@ -21,9 +21,8 @@ std::string Serialize(const viaaccess::RuntimeConfig& cfg, bool include_secrets 
 // ParseRemoteDeviceConfig reads GET /api/bridge/device-config.
 bool ParseRemoteDeviceConfig(const std::string& json, viaaccess::RemoteDeviceConfig* out);
 
-// ParsePolicySnapshot reads the subset of GET /api/bridge/policy-snapshot that
-// drives operation mode and /health. Grant lists and the HMAC ticket key are
-// kept in the raw document for contingency to consume later.
+// ParsePolicySnapshot reads GET /api/bridge/policy-snapshot for operation mode,
+// /health and offline contingency (member grants + HMAC ticket key).
 bool ParsePolicySnapshot(const std::string& json, viaaccess::PolicyState* out);
 
 }  // namespace config_json

@@ -1,14 +1,19 @@
 #include "scan_service.hpp"
 
+#include <ctime>
 #include <mutex>
+#include <utility>
 
 #include "app_state.hpp"
 #include "cJSON.h"
+#include "contingency_store.hpp"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "identity_client.hpp"
 #include "relay.hpp"
+#include "viaaccess/contingency.hpp"
 #include "viaaccess/mode.hpp"
+#include "viaaccess/outbox.hpp"
 #include "viaaccess/redeem.hpp"
 #include "viaaccess/scan.hpp"
 #include "viaaccess/strings.hpp"
@@ -76,9 +81,6 @@ std::string ExtractQrUrl(const std::string& raw_body) {
   return selected;
 }
 
-// BlockedByStalePolicy is the response when redeem could not reach Identity.
-// Offline validation is step 6, so the appliance refuses the passage with the
-// same code the Go agent uses when contingency is unavailable.
 viaaccess::RedeemResult BlockedByStalePolicy(const std::string& online_hint) {
   viaaccess::RedeemResult result;
   result.ok = false;
@@ -91,6 +93,49 @@ viaaccess::RedeemResult BlockedByStalePolicy(const std::string& online_hint) {
   result.data.error = message;
   result.data.code = "SYNC_STALE";
   return result;
+}
+
+// TryContingency mirrors internal/scan/handler.go: local HMAC verify, nonce,
+// outbox enqueue, then a synthetic AUTHORIZED redeem for relay/unlock.
+std::pair<viaaccess::ScanPath, viaaccess::RedeemResult> TryContingency(
+    const viaaccess::RuntimeConfig& cfg, const std::string& qr_url,
+    const std::string& online_hint) {
+  if (app::State::Instance().operation_mode() != viaaccess::OperationMode::kContingency) {
+    return {viaaccess::ScanPath::kBlocked, BlockedByStalePolicy(online_hint)};
+  }
+
+  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  viaaccess::VerifyInput input;
+  input.qr_url = qr_url;
+  input.access_point_slug = cfg.access_point_slug;
+  input.policy = app::State::Instance().policy();
+  input.nonce = &contingency_store::Nonce();
+  input.now = now;
+
+  const viaaccess::VerifyResult verify = viaaccess::Verify(input);
+  if (!verify.ok) {
+    viaaccess::RedeemResult result;
+    result.ok = false;
+    result.status = 503;
+    result.data.error = verify.error;
+    result.data.code = verify.code;
+    return {viaaccess::ScanPath::kContingency, result};
+  }
+
+  viaaccess::OutboxEvent event;
+  event.intent_id = verify.intent_id;
+  event.member_id = verify.member_id;
+  event.access_point_slug = cfg.access_point_slug;
+  event.qr_url = qr_url;
+  event.scanned_at = now;
+  contingency_store::EnqueueOutbox(std::move(event));
+
+  viaaccess::RedeemResult result;
+  result.ok = true;
+  result.data.member_id = verify.member_id;
+  result.data.correlation_outcome = "AUTHORIZED";
+  result.data.access_point_slug = cfg.access_point_slug;
+  return {viaaccess::ScanPath::kContingency, result};
 }
 
 struct Executed {
@@ -110,12 +155,12 @@ Executed Execute(const viaaccess::RuntimeConfig& cfg, const std::string& qr_url)
   if (executed.result.ok) {
     executed.path = viaaccess::ScanPath::kOnline;
   } else if (executed.result.status == 0 || executed.result.status >= 500) {
-    // Unreachable or Identity-side failure: the Go agent would try contingency
-    // here. See BlockedByStalePolicy.
-    executed.result = BlockedByStalePolicy(executed.result.status == 0
-                                               ? "Rede indisponível para redeem online."
-                                               : executed.result.data.error);
-    executed.path = viaaccess::ScanPath::kBlocked;
+    const auto contingency = TryContingency(
+        cfg, qr_url,
+        executed.result.status == 0 ? "Rede indisponível para redeem online."
+                                    : executed.result.data.error);
+    executed.path = contingency.first;
+    executed.result = contingency.second;
   } else {
     executed.path = viaaccess::ScanPath::kBlocked;
   }

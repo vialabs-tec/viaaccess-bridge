@@ -247,11 +247,31 @@ bool ParsePolicySnapshot(const std::string& json, PolicyState* out) {
   out->trust_key_id = GetString(root, "trustKeyId", "");
   out->member_grant_count = GetInt(root, "memberGrantCount", 0);
   out->max_stale_hours = GetInt(root, "maxStaleHours", 0);
+  out->member_ids.clear();
+  out->ticket_verify = {};
+
+  if (const cJSON* members = cJSON_GetObjectItemCaseSensitive(root, "memberIds")) {
+    if (cJSON_IsArray(members)) {
+      const cJSON* item = nullptr;
+      cJSON_ArrayForEach(item, members) {
+        if (cJSON_IsString(item) && item->valuestring != nullptr &&
+            item->valuestring[0] != '\0') {
+          out->member_ids.emplace_back(item->valuestring);
+        }
+      }
+    }
+  }
+  if (out->member_grant_count <= 0 && !out->member_ids.empty()) {
+    out->member_grant_count = static_cast<int>(out->member_ids.size());
+  }
 
   if (const cJSON* ticket = Object(root, "ticketVerify")) {
-    out->ticket_verify_ready = GetString(ticket, "alg", "") == "HS256" &&
-                               !GetString(ticket, "keyB64", "").empty() &&
-                               !GetString(ticket, "issuer", "").empty();
+    out->ticket_verify.alg = GetString(ticket, "alg", "");
+    out->ticket_verify.key_b64 = GetString(ticket, "keyB64", "");
+    out->ticket_verify.issuer = GetString(ticket, "issuer", "");
+    out->ticket_verify_ready = out->ticket_verify.alg == "HS256" &&
+                               !out->ticket_verify.key_b64.empty() &&
+                               !out->ticket_verify.issuer.empty();
   } else {
     out->ticket_verify_ready = false;
   }

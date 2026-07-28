@@ -9,6 +9,7 @@
 #include "app_state.hpp"
 #include "clock_service.hpp"
 #include "config_json.hpp"
+#include "contingency_store.hpp"
 #include "door_contact.hpp"
 #include "esp_err.h"
 #include "exit_button.hpp"
@@ -96,12 +97,13 @@ extern "C" void app_main() {
   const viaaccess::RuntimeConfig boot = state.config();
 
   // Restoring the last snapshot before the first sync keeps /health honest about
-  // policy age after a reboot, and is what contingency will read from later.
+  // policy age after a reboot and lets CONTINGENCY authorize offline immediately.
   const std::string snapshot = storage::LoadPolicySnapshot();
   viaaccess::PolicyState policy;
   if (!snapshot.empty() && config_json::ParsePolicySnapshot(snapshot, &policy)) {
     state.set_policy(policy);
   }
+  ESP_ERROR_CHECK_WITHOUT_ABORT(contingency_store::Load());
 
   // Before the radio: a DS3231 that survived the outage gives the first TLS
   // handshake a valid date instead of waiting for SNTP.
