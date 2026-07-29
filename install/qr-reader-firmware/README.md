@@ -506,10 +506,29 @@ Identity enqueues `UPDATE` with `{ version, url, sha256 }`. The appliance:
 5. On the next boot `esp_ota_mark_app_valid_cancel_rollback()` confirms the image
    after Wi-Fi/HTTP are up; a crash before that rolls back automatically
 
-The artifact must be the app partition binary from CI (`viaaccess-qr-firmware.bin`),
-not a merged flash image. Point Identity `BRIDGE_OTA_*` at a firmware tag
-(`qr-reader-firmware-v*`) whose `version` matches the CI-stamped
-`VIAACCESS_FIRMWARE_VERSION`. This is the only fleet OTA path going forward.
+### Publishing a release
+
+```bash
+# on viaaccess-bridge main
+VERSION=1.0.0
+git tag "qr-reader-firmware-v${VERSION}"
+git push origin "qr-reader-firmware-v${VERSION}"
+```
+
+CI builds the image, uploads an Actions artifact, and creates a **GitHub Release**
+on that tag with `viaaccess-qr-firmware.bin` (+ `.sha256`, flash helpers). Copy
+the Identity block from the release notes into `.env`:
+
+```bash
+BRIDGE_OTA_VERSION=1.0.0
+BRIDGE_OTA_DOWNLOAD_URL=https://github.com/vialabs-tec/viaaccess-bridge/releases/download/qr-reader-firmware-v1.0.0/viaaccess-qr-firmware.bin
+BRIDGE_OTA_SHA256=<from release notes or .sha256 asset>
+BRIDGE_OTA_URL_ALLOWLIST=https://github.com/vialabs-tec/
+```
+
+`BRIDGE_OTA_VERSION` must match the CI-stamped `VIAACCESS_FIRMWARE_VERSION`
+(the part after `qr-reader-firmware-v`). This is the only fleet OTA path going
+forward.
 
 ## Not in this scaffold
 

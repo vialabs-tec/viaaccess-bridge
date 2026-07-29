@@ -12,6 +12,11 @@ on:
       - "install/qr-reader-firmware/**"
       - ".github/workflows/qr-reader-firmware.yml"
 
+# Tag pushes always need contents:write for the GitHub Release. Branch/PR builds
+# only upload Actions artifacts.
+permissions:
+  contents: write
+
 jobs:
   host-tests:
     name: host tests
@@ -37,6 +42,9 @@ jobs:
       run:
         working-directory: install/qr-reader-firmware
         shell: bash
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+      sha256: ${{ steps.sha.outputs.value }}
     steps:
       - uses: actions/checkout@v4
 
@@ -63,27 +71,70 @@ jobs:
           idf.py size
 
       - name: App image SHA-256
+        id: sha
         run: |
           HASH=$(sha256sum build/viaaccess-qr-firmware.bin | awk '{print $1}')
-          echo "${HASH}" > build/viaaccess-qr-firmware.bin.sha256
-          echo "${{ steps.version.outputs.value }}" > build/VERSION
+          mkdir -p dist
+          cp build/viaaccess-qr-firmware.bin dist/
+          cp build/bootloader/bootloader.bin dist/
+          cp build/partition_table/partition-table.bin dist/
+          cp build/ota_data_initial.bin dist/
+          cp build/flasher_args.json dist/
+          echo "${HASH}" > dist/viaaccess-qr-firmware.bin.sha256
+          echo "${{ steps.version.outputs.value }}" > dist/VERSION
+          echo "value=${HASH}" >> "$GITHUB_OUTPUT"
           echo "viaaccess-qr-firmware.bin sha256=${HASH}"
           echo "Identity BRIDGE_OTA_VERSION=${{ steps.version.outputs.value }}"
           echo "Identity BRIDGE_OTA_SHA256=${HASH}"
 
-      # These images plus flasher_args.json are everything esptool needs, so a
-      # technician can flash a release without an ESP-IDF install.
+      # Flat dist/ so the release job can attach files without nested paths.
       # ota_data_initial.bin points a fresh board at ota_0.
       # The .sha256 sidecar is what Identity BRIDGE_OTA_SHA256 must match.
       - uses: actions/upload-artifact@v4
         with:
           name: qr-reader-firmware-${{ steps.version.outputs.value }}
-          path: |
-            install/qr-reader-firmware/build/viaaccess-qr-firmware.bin
-            install/qr-reader-firmware/build/viaaccess-qr-firmware.bin.sha256
-            install/qr-reader-firmware/build/VERSION
-            install/qr-reader-firmware/build/bootloader/bootloader.bin
-            install/qr-reader-firmware/build/partition_table/partition-table.bin
-            install/qr-reader-firmware/build/ota_data_initial.bin
-            install/qr-reader-firmware/build/flasher_args.json
+          path: install/qr-reader-firmware/dist/*
           if-no-files-found: error
+
+  # Publish a GitHub Release only for version tags so Identity can point
+  # BRIDGE_OTA_DOWNLOAD_URL at a stable public HTTPS URL (Actions artifacts expire).
+  release:
+    name: github release
+    if: startsWith(github.ref, 'refs/tags/qr-reader-firmware-v')
+    needs: firmware
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: qr-reader-firmware-${{ needs.firmware.outputs.version }}
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: QR reader firmware ${{ needs.firmware.outputs.version }}
+          body: |
+            ESP32-S3 app image for fleet OTA and USB flash.
+
+            ### Identity `BRIDGE_OTA_*`
+            ```bash
+            BRIDGE_OTA_VERSION=${{ needs.firmware.outputs.version }}
+            BRIDGE_OTA_DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/viaaccess-qr-firmware.bin
+            BRIDGE_OTA_SHA256=${{ needs.firmware.outputs.sha256 }}
+            BRIDGE_OTA_URL_ALLOWLIST=https://github.com/vialabs-tec/
+            ```
+
+            Flash (full first install) needs `bootloader.bin`, `partition-table.bin`,
+            `ota_data_initial.bin` and the app image — all attached below.
+          files: |
+            dist/viaaccess-qr-firmware.bin
+            dist/viaaccess-qr-firmware.bin.sha256
+            dist/VERSION
+            dist/bootloader.bin
+            dist/partition-table.bin
+            dist/ota_data_initial.bin
+            dist/flasher_args.json
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
