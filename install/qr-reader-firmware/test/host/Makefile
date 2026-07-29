@@ -22,6 +22,7 @@ SOURCES := \
 	test_hostname.cpp \
 	test_line_buffer.cpp \
 	test_mode.cpp \
+	test_ota.cpp \
 	test_poll.cpp \
 	test_provision.cpp \
 	test_redeem.cpp \

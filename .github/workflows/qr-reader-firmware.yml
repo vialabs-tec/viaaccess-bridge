@@ -62,14 +62,26 @@ jobs:
           . "$IDF_PATH/export.sh"
           idf.py size
 
-      # These four images plus flasher_args.json are everything esptool needs, so
-      # a technician can flash a release without an ESP-IDF install.
-      # ota_data_initial.bin is what points a fresh board at ota_0.
+      - name: App image SHA-256
+        run: |
+          HASH=$(sha256sum build/viaaccess-qr-firmware.bin | awk '{print $1}')
+          echo "${HASH}" > build/viaaccess-qr-firmware.bin.sha256
+          echo "${{ steps.version.outputs.value }}" > build/VERSION
+          echo "viaaccess-qr-firmware.bin sha256=${HASH}"
+          echo "Identity BRIDGE_OTA_VERSION=${{ steps.version.outputs.value }}"
+          echo "Identity BRIDGE_OTA_SHA256=${HASH}"
+
+      # These images plus flasher_args.json are everything esptool needs, so a
+      # technician can flash a release without an ESP-IDF install.
+      # ota_data_initial.bin points a fresh board at ota_0.
+      # The .sha256 sidecar is what Identity BRIDGE_OTA_SHA256 must match.
       - uses: actions/upload-artifact@v4
         with:
           name: qr-reader-firmware-${{ steps.version.outputs.value }}
           path: |
             install/qr-reader-firmware/build/viaaccess-qr-firmware.bin
+            install/qr-reader-firmware/build/viaaccess-qr-firmware.bin.sha256
+            install/qr-reader-firmware/build/VERSION
             install/qr-reader-firmware/build/bootloader/bootloader.bin
             install/qr-reader-firmware/build/partition_table/partition-table.bin
             install/qr-reader-firmware/build/ota_data_initial.bin

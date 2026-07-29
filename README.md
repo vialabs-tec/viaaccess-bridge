@@ -27,8 +27,8 @@ Escolha por instalação:
 | Rede na primeira vez | Rede do Pi já configurada | SoftAP `viaaccess-qr-setup` → `/wifi` |
 | Mapa de GPIO | BCM: relé 17, porta 4, REX 18, LED 22/27/23 | relé 10, porta 11, REX 12, LED 4/5/6 |
 | Relógio | Hora do sistema (NTP) | SNTP; DS3231 opcional para hora confiável sem rede |
-| Contingência offline | Implementada | Ainda não; falha fechado como `SYNC_STALE` |
-| OTA de frota | Binário via comando `UPDATE` | Partições A/B prontas, download ainda não |
+| Contingência offline | Implementada (legado) | Implementada |
+| OTA de frota | Legado (não é alvo de `BRIDGE_OTA_*`) | App image via comando `UPDATE` |
 
 Provisionamento é igual nos dois: cole a URL de claim (`clm_…`) do admin do Identity em
 `http://viaaccess-qr.local:3710/setup`.

@@ -2,9 +2,9 @@
 #
 # Two 4 MB app slots give room for TLS plus the embedded setup UI and keep OTA
 # A/B rollback available, which is what makes remote UPDATE safe on a door.
-# LittleFS ("storage") holds config.json, the policy snapshot and, once
-# contingency lands, the outbox and consumed-intent stores. Secrets (device key,
-# Wi-Fi password) live in NVS instead, never on the filesystem image.
+# LittleFS ("storage") holds config.json, the policy snapshot, the outbox and
+# the consumed-intent nonce store. Secrets (device key, Wi-Fi password) live in
+# NVS instead, never on the filesystem image.
 #
 # Name,     Type, SubType,  Offset,   Size,     Flags
 nvs,        data, nvs,      0x9000,   0x6000,

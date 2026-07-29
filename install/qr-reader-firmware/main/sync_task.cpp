@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "identity_client.hpp"
+#include "ota_update.hpp"
 #include "relay.hpp"
 #include "storage.hpp"
 #include "viaaccess/commands.hpp"
@@ -143,10 +144,9 @@ void PolicyLoop(void* /*argument*/) {
   }
 }
 
-// ExecuteCommand handles the remote maintenance verbs. OTA is acknowledged as
-// unsupported for now: the partition table already reserves ota_0/ota_1, but the
-// download and rollback path is a later step and silently ignoring the command
-// would leave the dashboard waiting forever.
+// ExecuteCommand handles the remote maintenance verbs. UPDATE downloads into the
+// inactive OTA slot, verifies SHA-256, acks Identity, then reboots (same order
+// as the Go agent: ack before restart).
 identity::Outcome ExecuteCommand(const viaaccess::RuntimeConfig& cfg,
                                  const identity::PendingCommand& command,
                                  bool* reboot_after_ack) {
@@ -167,11 +167,22 @@ identity::Outcome ExecuteCommand(const viaaccess::RuntimeConfig& cfg,
       app::State::Instance().EnterSetupMode("reset command from Identity");
       return acked;
     }
-    case viaaccess::CommandAction::kUpdate:
-      ESP_LOGW(kTag, "command %s asks for OTA, which this firmware cannot apply yet",
-               command.id.c_str());
-      return identity::AckCommand(cfg, command.id, false,
-                                  "OTA not supported by esp32 firmware yet");
+    case viaaccess::CommandAction::kUpdate: {
+      if (!command.has_ota_payload) {
+        return identity::AckCommand(cfg, command.id, false, "incomplete OTA payload");
+      }
+      ESP_LOGI(kTag, "OTA command %s version=%s", command.id.c_str(),
+               command.ota_version.c_str());
+      const ota::ApplyResult applied =
+          ota::Apply(command.ota_version, command.ota_url, command.ota_sha256);
+      if (!applied.ok) {
+        return identity::AckCommand(cfg, command.id, false, applied.error);
+      }
+      if (!applied.already_current) {
+        *reboot_after_ack = true;
+      }
+      return identity::AckCommand(cfg, command.id, true, "");
+    }
     case viaaccess::CommandAction::kUnknown:
       break;
   }
@@ -231,10 +242,10 @@ void Start() {
   if (g_started.exchange(true)) {
     return;
   }
-  // Both stacks must hold esp_http_client plus a TLS session; the policy loop
-  // gets the larger one because it also parses the whole snapshot.
+  // Policy holds TLS + snapshot parse. Commands also run HTTPS OTA downloads, so
+  // that task needs a larger stack for the mbedTLS session.
   xTaskCreate(PolicyLoop, "va_policy", 8192, nullptr, 4, nullptr);
-  xTaskCreate(CommandLoop, "va_commands", 6144, nullptr, 4, nullptr);
+  xTaskCreate(CommandLoop, "va_commands", 24576, nullptr, 4, nullptr);
   ESP_LOGI(kTag, "sync workers started");
 }
 

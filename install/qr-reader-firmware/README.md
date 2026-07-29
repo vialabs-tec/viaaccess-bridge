@@ -494,13 +494,27 @@ reports `flushed > 0`. `/health` exposes `contingency.localVerify: "ready"` and
 Deferred vs the Pi agent: offline `after_hours` evaluation (needs a timezone
 database on flash).
 
+## OTA updates
+
+Identity enqueues `UPDATE` with `{ version, url, sha256 }`. The appliance:
+
+1. Skips the download when `version` already matches `agentVersion` (ack ok)
+2. HTTPS-downloads the **app image** (`viaaccess-qr-firmware.bin`) into the
+   inactive OTA slot while hashing
+3. Aborts without changing the boot partition on SHA-256 mismatch or write error
+4. On success: points the bootloader at the new slot, acks Identity, reboots
+5. On the next boot `esp_ota_mark_app_valid_cancel_rollback()` confirms the image
+   after Wi-Fi/HTTP are up; a crash before that rolls back automatically
+
+The artifact must be the app partition binary from CI (`viaaccess-qr-firmware.bin`),
+not a merged flash image. Point Identity `BRIDGE_OTA_*` at a firmware tag
+(`qr-reader-firmware-v*`) whose `version` matches the CI-stamped
+`VIAACCESS_FIRMWARE_VERSION`. This is the only fleet OTA path going forward.
+
 ## Not in this scaffold
 
 Deliberate gaps, listed so nobody assumes parity with the Pi:
 
-- **OTA download.** The partition table reserves both slots and rollback is on,
-  but an `update` command is acknowledged as unsupported rather than silently
-  dropped.
 - **NVS encryption.** Secrets are isolated in NVS so enabling encryption later
   does not change this code.
 - **Offline after_hours.** Contingency verifies ticket + grants, but does not

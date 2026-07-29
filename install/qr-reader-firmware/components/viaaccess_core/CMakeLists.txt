@@ -14,6 +14,7 @@ idf_component_register(
     "src/hostname.cpp"
     "src/line_buffer.cpp"
     "src/mode.cpp"
+    "src/ota.cpp"
     "src/outbox.cpp"
     "src/poll.cpp"
     "src/provision.cpp"

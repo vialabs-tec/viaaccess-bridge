@@ -522,25 +522,20 @@ O script:
 4. Habilita `viaaccess-qr-agent.service` + `viaaccess-qr-agent-health.service` (health no boot)
 5. Sobe o serviço (`http://<ip>:3710/setup` se ainda não provisionado)
 
-### Fleet OTA
+### Fleet OTA (legado)
 
-Com Identity configurado (`BRIDGE_OTA_VERSION`, `BRIDGE_OTA_DOWNLOAD_URL`, `BRIDGE_OTA_SHA256`), o admin enfileira **Atualizar software** no painel. O agent:
+> **Nota:** a release configurada no Identity (`BRIDGE_OTA_*`) a partir de agora é a
+> **app image do firmware ESP32-S3** (`viaaccess-qr-firmware.bin`). Não use o botão
+> “Atualizar software” do admin para leitores Pi com essa configuração — o hash/URL
+> não são o binário Go. Atualize o Pi com `install.sh` / release próprio.
 
-1. Faz poll de `UPDATE` com `{ version, url, sha256 }`
-2. Baixa o binário (HTTPS), verifica SHA-256, troca o arquivo sob `/var/lib/…` e faz ack
-3. Sai com código 0; systemd `Restart=always` sobe a nova versão
-
-Rede do cliente: saída HTTPS para o Identity **e** para o host do artifact (CDN/GitHub Releases). Sem VPN/SSH.
-
-Publique um release e configure o Identity:
+O agent ainda implementa `UPDATE` (download HTTPS + SHA-256 + replace sob `/var/lib/…`
++ restart via systemd) caso um Identity legado ainda aponte para
+`viaaccess-qr-agent-linux-arm64`.
 
 ```bash
 make VERSION=1.4.0 release
 shasum -a 256 bin/viaaccess-qr-agent-linux-arm64
-# suba o binário; no Identity:
-# BRIDGE_OTA_VERSION=1.4.0
-# BRIDGE_OTA_DOWNLOAD_URL=https://…/viaaccess-qr-agent-linux-arm64
-# BRIDGE_OTA_SHA256=<hex>
 ```
 
 Readers já instalados com binário só em `/usr/local/bin` precisam de um `install.sh` desta versão (uma vez) para migrar o path gravável.
@@ -568,7 +563,7 @@ journalctl -u viaaccess-qr-agent -u viaaccess-qr-agent-health -f
 | Status LED | `internal/statusled` |
 | Door contact (MC38) | `internal/doorcontact` |
 | Exit button (REX) | `internal/exitbutton` |
-| Fleet OTA | `scripts/install.sh`, Identity enqueue |
+| Fleet OTA | `scripts/install.sh` (legado; Identity OTA é firmware) |
 | Install + health boot | `scripts/install.sh`, `*-health.service` |
 | OS harden (piloto) | `scripts/harden-os.sh`, [docs/field-hardening.md](docs/field-hardening.md) |
 

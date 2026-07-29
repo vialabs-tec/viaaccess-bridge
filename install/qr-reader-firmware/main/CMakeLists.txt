@@ -11,6 +11,7 @@ idf_component_register(
     "status_led.cpp"
     "http_server.cpp"
     "identity_client.cpp"
+    "ota_update.cpp"
     "qr_reader.cpp"
     "relay.cpp"
     "scan_service.cpp"
