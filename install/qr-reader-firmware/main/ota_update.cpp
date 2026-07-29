@@ -21,7 +21,13 @@ namespace {
 
 constexpr const char* kTag = "ota";
 constexpr int kHttpTimeoutMs = 5 * 60 * 1000;
+// GitHub release Location headers are ~900+ bytes; undersized TX/RX buffers
+// make redirection fail and the client surfaces HTTP 302 to the caller.
+constexpr std::size_t kHttpBuffer = 4096;
 constexpr std::size_t kRxChunk = 4096;
+constexpr int kMaxRedirects = 10;
+// ESP32 app images always start with this magic byte.
+constexpr uint8_t kEspImageMagic = 0xe9;
 
 std::string HexLower(const uint8_t* data, std::size_t length) {
   static constexpr char kDigits[] = "0123456789abcdef";
@@ -39,6 +45,54 @@ ApplyResult Fail(const std::string& error) {
   result.ok = false;
   result.error = error;
   return result;
+}
+
+bool IsRedirect(int status) { return status >= 300 && status < 400; }
+
+// OpenConnection follows GitHub-style HTTPS redirects manually. esp_http_client
+// open()+fetch_headers() does not reliably auto-follow across hosts, and a
+// truncated Location header looks like a hard 302 failure.
+esp_err_t OpenConnection(esp_http_client_handle_t client, int* status_out,
+                         int* content_length_out, std::string* error_out) {
+  for (int redirect = 0; redirect <= kMaxRedirects; ++redirect) {
+    esp_err_t err = esp_http_client_open(client, 0);
+    if (err != ESP_OK) {
+      *error_out = std::string("OTA open failed: ") + esp_err_to_name(err);
+      return err;
+    }
+
+    const int content_length = esp_http_client_fetch_headers(client);
+    const int status = esp_http_client_get_status_code(client);
+    ESP_LOGI(kTag, "OTA HTTP status=%d content_length=%d redirect=%d", status,
+             content_length, redirect);
+
+    if (IsRedirect(status)) {
+      err = esp_http_client_set_redirection(client);
+      esp_http_client_close(client);
+      if (err != ESP_OK) {
+        *error_out = std::string("OTA redirect failed: ") + esp_err_to_name(err);
+        return err;
+      }
+      if (redirect == kMaxRedirects) {
+        *error_out = "OTA too many redirects";
+        return ESP_ERR_HTTP_MAX_REDIRECT;
+      }
+      continue;
+    }
+
+    if (status < 200 || status >= 300) {
+      esp_http_client_close(client);
+      *error_out = "OTA HTTP " + std::to_string(status);
+      return ESP_FAIL;
+    }
+
+    *status_out = status;
+    *content_length_out = content_length;
+    return ESP_OK;
+  }
+
+  *error_out = "OTA too many redirects";
+  return ESP_ERR_HTTP_MAX_REDIRECT;
 }
 
 }  // namespace
@@ -79,26 +133,26 @@ ApplyResult Apply(const std::string& version, const std::string& url,
   http_config.timeout_ms = kHttpTimeoutMs;
   http_config.crt_bundle_attach = esp_crt_bundle_attach;
   http_config.keep_alive_enable = true;
-  http_config.buffer_size = static_cast<int>(kRxChunk);
-  http_config.buffer_size_tx = 1024;
+  http_config.max_redirection_count = kMaxRedirects;
+  http_config.disable_auto_redirect = true;  // handled explicitly below
+  http_config.buffer_size = static_cast<int>(kHttpBuffer);
+  http_config.buffer_size_tx = static_cast<int>(kHttpBuffer);
 
   esp_http_client_handle_t client = esp_http_client_init(&http_config);
   if (client == nullptr) {
     return Fail("OTA HTTP client init failed");
   }
+  // Some CDNs reject empty/odd User-Agent; keep a stable browser-like token.
+  esp_http_client_set_header(client, "User-Agent", "ViaAccess-QR-Firmware-OTA/1");
+  esp_http_client_set_header(client, "Accept", "*/*");
 
-  esp_err_t err = esp_http_client_open(client, 0);
+  int status = 0;
+  int content_length = -1;
+  std::string open_error;
+  esp_err_t err = OpenConnection(client, &status, &content_length, &open_error);
   if (err != ESP_OK) {
     esp_http_client_cleanup(client);
-    return Fail(std::string("OTA open failed: ") + esp_err_to_name(err));
-  }
-
-  const int content_length = esp_http_client_fetch_headers(client);
-  const int status = esp_http_client_get_status_code(client);
-  if (status < 200 || status >= 300) {
-    esp_http_client_close(client);
-    esp_http_client_cleanup(client);
-    return Fail("OTA HTTP " + std::to_string(status));
+    return Fail(open_error.empty() ? esp_err_to_name(err) : open_error);
   }
   if (content_length > static_cast<int>(update->size)) {
     esp_http_client_close(client);
@@ -135,9 +189,13 @@ ApplyResult Apply(const std::string& version, const std::string& url,
       if (esp_http_client_is_complete_data_received(client)) {
         break;
       }
-      // Yield so the idle task can pet the watchdog during a long download.
       vTaskDelay(pdMS_TO_TICKS(1));
       continue;
+    }
+    if (written == 0 && static_cast<uint8_t>(buffer[0]) != kEspImageMagic) {
+      write_ok = false;
+      write_error = "OTA image missing ESP magic (redirect/HTML?)";
+      break;
     }
     if (written + read > static_cast<int>(update->size)) {
       write_ok = false;
@@ -170,6 +228,10 @@ ApplyResult Apply(const std::string& version, const std::string& url,
   if (!write_ok) {
     esp_ota_abort(ota_handle);
     return Fail(write_error);
+  }
+  if (content_length > 0 && written != content_length) {
+    esp_ota_abort(ota_handle);
+    return Fail("OTA incomplete download");
   }
   if (written <= 0) {
     esp_ota_abort(ota_handle);

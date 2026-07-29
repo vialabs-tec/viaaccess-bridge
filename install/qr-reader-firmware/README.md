@@ -530,6 +530,11 @@ BRIDGE_OTA_URL_ALLOWLIST=https://github.com/vialabs-tec/
 (the part after `qr-reader-firmware-v`). This is the only fleet OTA path going
 forward.
 
+GitHub release URLs respond with HTTPS **302** to `release-assets.githubusercontent.com`
+and a long `Location` header. The OTA client follows redirects explicitly and uses
+4 KB HTTP buffers so that hop succeeds; without it the appliance acks
+`OTA HTTP 302` and stays on the previous image.
+
 ## Not in this scaffold
 
 Deliberate gaps, listed so nobody assumes parity with the Pi:
