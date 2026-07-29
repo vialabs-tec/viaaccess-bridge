@@ -249,6 +249,8 @@ bool ParsePolicySnapshot(const std::string& json, PolicyState* out) {
   out->max_stale_hours = GetInt(root, "maxStaleHours", 0);
   out->member_ids.clear();
   out->ticket_verify = {};
+  out->edge_policy_version.clear();
+  out->after_hours = {};
 
   if (const cJSON* members = cJSON_GetObjectItemCaseSensitive(root, "memberIds")) {
     if (cJSON_IsArray(members)) {
@@ -277,6 +279,16 @@ bool ParsePolicySnapshot(const std::string& json, PolicyState* out) {
   }
   if (const cJSON* edge = Object(root, "edgePolicy")) {
     out->edge_policy_version = GetString(edge, "version", "");
+    if (const cJSON* rules = Object(edge, "rules")) {
+      if (const cJSON* after_hours = Object(rules, "after_hours")) {
+        out->after_hours.enabled = GetBool(after_hours, "enabled", false);
+        if (const cJSON* params = Object(after_hours, "params")) {
+          out->after_hours.after_time = GetString(params, "afterTime", "");
+          out->after_hours.before_time = GetString(params, "beforeTime", "");
+          out->after_hours.timezone = GetString(params, "timezone", "");
+        }
+      }
+    }
   }
 
   cJSON_Delete(root);

@@ -61,10 +61,8 @@ struct VerifyResult {
   std::string error;
 };
 
-// Verify performs local passage validation during CONTINGENCY mode.
-// after_hours is deferred: snapshots without a timezone database cannot evaluate
-// local windows the way the Pi does, so this path matches Go when the rule is
-// absent (fail open on hours).
+// Verify performs local passage validation during CONTINGENCY mode, including
+// edgePolicy.after_hours when present (unknown timezones fail open).
 VerifyResult Verify(const VerifyInput& input);
 
 // SignPassageTicketHS256 builds a compact JWT for host tests. Not used on device.

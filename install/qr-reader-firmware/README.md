@@ -491,8 +491,10 @@ When the network returns, the policy sync loop posts pending outbox events to
 reports `flushed > 0`. `/health` exposes `contingency.localVerify: "ready"` and
 `outbox.pending`.
 
-Deferred vs the Pi agent: offline `after_hours` evaluation (needs a timezone
-database on flash).
+Offline `after_hours` follows the Pi agent: when the policy snapshot carries
+`edgePolicy.rules.after_hours`, contingency refuses with `AFTER_HOURS` outside
+the allowed window. Known zones (`America/Sao_Paulo`, `UTC`) use a fixed offset
+table; unknown timezones fail open, matching Go when `LoadLocation` fails.
 
 ## OTA updates
 
@@ -541,5 +543,6 @@ Deliberate gaps, listed so nobody assumes parity with the Pi:
 
 - **NVS encryption.** Secrets are isolated in NVS so enabling encryption later
   does not change this code.
-- **Offline after_hours.** Contingency verifies ticket + grants, but does not
-  yet evaluate edge-policy time windows locally.
+- **Full IANA timezone database.** Offline `after_hours` covers the zones ViaAccess
+  ships today (`America/Sao_Paulo`, `UTC`); other IANA ids fail open until added
+  to the offset table.

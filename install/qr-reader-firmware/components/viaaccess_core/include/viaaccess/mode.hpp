@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "viaaccess/after_hours.hpp"
+
 namespace viaaccess {
 
 enum class OperationMode {
@@ -40,6 +42,7 @@ struct PolicyState {
   int max_stale_hours = 0;
   bool ticket_verify_ready = false;
   std::string edge_policy_version;
+  AfterHoursPolicy after_hours;
   TicketVerify ticket_verify;
   std::vector<std::string> member_ids;
 };

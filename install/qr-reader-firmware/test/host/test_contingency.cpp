@@ -2,6 +2,7 @@
 #include "check.hpp"
 #include "viaaccess/contingency.hpp"
 #include "viaaccess/crypto.hpp"
+#include "viaaccess/time.hpp"
 
 #include <string>
 #include <vector>
@@ -104,6 +105,40 @@ VA_TEST(VerifyRejectsAccessPointMismatch) {
   VerifyResult result = Verify(VerifyInput{qr_url, "outra", snap, nullptr, now});
   CHECK(!result.ok);
   CHECK_EQ(result.code, "ACCESS_POINT_MISMATCH");
+}
+
+VA_TEST(VerifyBlocksAfterHoursFromSnapshot) {
+  const std::vector<uint8_t> secret = TestSecret();
+  PolicyState snap = TestPolicy(secret);
+  snap.after_hours.enabled = true;
+  snap.after_hours.after_time = "22:00";
+  snap.after_hours.before_time = "06:00";
+  snap.after_hours.timezone = "America/Sao_Paulo";
+  // 2026-06-26T02:00:00Z ≈ 23:00 America/Sao_Paulo
+  const int64_t outside = viaaccess::ParseRfc3339("2026-06-26T02:00:00Z");
+  const std::string token = SignPassageTicketHS256(secret, "mem_1", "intent_2", "entrada",
+                                                   "gv1", kIssuer, outside + 3600);
+  const std::string qr_url = "http://localhost:3100/r/intent_2?st=" + token;
+  VerifyResult result = Verify(VerifyInput{qr_url, "entrada", snap, nullptr, outside});
+  CHECK(!result.ok);
+  CHECK_EQ(result.code, "AFTER_HOURS");
+  CHECK_EQ(result.error, "Passagem fora do horário permitido.");
+}
+
+VA_TEST(VerifyAllowsInsideAfterHoursWindow) {
+  const std::vector<uint8_t> secret = TestSecret();
+  PolicyState snap = TestPolicy(secret);
+  snap.after_hours.enabled = true;
+  snap.after_hours.after_time = "22:00";
+  snap.after_hours.before_time = "06:00";
+  snap.after_hours.timezone = "America/Sao_Paulo";
+  // 2026-06-25T15:00:00Z ≈ 12:00 America/Sao_Paulo
+  const int64_t inside = viaaccess::ParseRfc3339("2026-06-25T15:00:00Z");
+  const std::string token = SignPassageTicketHS256(secret, "mem_1", "intent_3", "entrada",
+                                                   "gv1", kIssuer, inside + 3600);
+  const std::string qr_url = "http://localhost:3100/r/intent_3?st=" + token;
+  VerifyResult result = Verify(VerifyInput{qr_url, "entrada", snap, nullptr, inside});
+  CHECK(result.ok);
 }
 
 VA_TEST(HmacSha256KnownVector) {

@@ -338,6 +338,10 @@ VerifyResult Verify(const VerifyInput& input) {
   }
 
   const int64_t now = input.now;
+  if (AfterHoursReady(input.policy.after_hours) &&
+      IsOutsideAllowedHours(now, input.policy.after_hours)) {
+    return Fail("AFTER_HOURS", "Passagem fora do horário permitido.");
+  }
   if (claims.has_exp && now > claims.expires_at) {
     return Fail("INTENT_EXPIRED", "Ticket expirado.");
   }
