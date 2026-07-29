@@ -12,25 +12,23 @@ O bridge **não** faz reconhecimento facial nem cadastro de usuários. Ele tradu
 
 Pacote pronto com Frigate + MQTT + bridge: **[install/frigate/](install/frigate/README.md)**.
 
-Leitor de QR na catraca + QR dinâmico Identity (Phase 1b). Há **dois appliances** que
-falam o mesmo contrato HTTP (porta 3710) e os mesmos endpoints `/api/bridge/*` do Identity;
-o Identity só os distingue pelo header `X-ViaAccess-Agent-Version`:
+Leitor de QR na catraca + QR dinâmico Identity (Phase 1b): appliance
+**[install/qr-reader-firmware/](install/qr-reader-firmware/README.md)** (ESP32-S3, ESP-IDF).
+Contrato HTTP na porta 3710 e endpoints `/api/bridge/*` do Identity.
 
-- **[install/qr-reader-agent/](install/qr-reader-agent/README.md)**: agent Go no Raspberry Pi (`viaaccess-qr-agent`), com systemd
-- **[install/qr-reader-firmware/](install/qr-reader-firmware/README.md)**: firmware ESP32-S3 (ESP-IDF), sem sistema operacional
+O agent Go em [install/qr-reader-agent/](install/qr-reader-agent/README.md) (Raspberry Pi)
+é **legado**: código permanece no repo, CI desligado, sem novas instalações nem OTA de frota.
 
-Escolha por instalação:
+| | ESP32-S3 (suportado) |
+|---|---|
+| Leitor de QR | UART TTL 9600 (ex. EP8280L) ou `POST /scan` |
+| Rede na primeira vez | SoftAP `viaaccess-qr-setup` → `/wifi` |
+| Mapa de GPIO | relé 10, porta 11, REX 12, LED 4/5/6 |
+| Relógio | SNTP; DS3231 opcional para hora confiável sem rede |
+| Contingência offline | Implementada (inclui `after_hours`) |
+| OTA de frota | App image via comando `UPDATE` (`BRIDGE_OTA_*`) |
 
-| | Raspberry Pi (agent Go) | ESP32-S3 (firmware) |
-|---|---|---|
-| Leitor de QR | USB (HID) ou `POST /scan` | UART TTL 9600 (ex. EP8280L) ou `POST /scan` |
-| Rede na primeira vez | Rede do Pi já configurada | SoftAP `viaaccess-qr-setup` → `/wifi` |
-| Mapa de GPIO | BCM: relé 17, porta 4, REX 18, LED 22/27/23 | relé 10, porta 11, REX 12, LED 4/5/6 |
-| Relógio | Hora do sistema (NTP) | SNTP; DS3231 opcional para hora confiável sem rede |
-| Contingência offline | Implementada (legado) | Implementada |
-| OTA de frota | Legado (não é alvo de `BRIDGE_OTA_*`) | App image via comando `UPDATE` |
-
-Provisionamento é igual nos dois: cole a URL de claim (`clm_…`) do admin do Identity em
+Provisionamento: cole a URL de claim (`clm_…`) do admin do Identity em
 `http://viaaccess-qr.local:3710/setup`.
 
 Imagem Docker:

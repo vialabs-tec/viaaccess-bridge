@@ -1,9 +1,19 @@
 name: Publish image
 
+# Frigate MQTT → VADP sidecar (Node). Not the QR reader appliance.
+# Path filter avoids rebuilds (and flaky linux/arm64 qemu) on firmware-only pushes.
 on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "Dockerfile"
+      - ".github/workflows/publish-image.yml"
+      - "install/frigate/**"
   workflow_dispatch:
 
 env:

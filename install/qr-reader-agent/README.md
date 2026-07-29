@@ -1,8 +1,12 @@
 # ViaAccess QR Reader Agent (Go)
 
+> **Legado.** Novas instalações usam o firmware ESP32-S3
+> ([install/qr-reader-firmware](../qr-reader-firmware/README.md)). Este agent Pi
+> permanece no repo como referência; o CI de push/PR está desligado.
+
 Daemon de borda para o **appliance ViaAccess QR Reader**: lê QR dinâmico do Identity, faz `POST /api/bridge/intent/redeem`, opcionalmente aciona relé GPIO e webhook de unlock.
 
-Runtime de produção no Raspberry Pi (setup UI, policy sync, OTA, door contact, exit button, systemd).
+Runtime no Raspberry Pi (setup UI, policy sync, OTA, door contact, exit button, systemd).
 
 ```
 Celular (PWA) → QR → leitor USB/HTTP → viaaccess-qr-agent → Identity → ViaAccess
@@ -22,7 +26,7 @@ Requisitos: Go 1.22+
 cd install/qr-reader-agent
 make build          # bin/viaaccess-qr-agent (host)
 make arm64          # bin/viaaccess-qr-agent-linux-arm64 (Pi)
-make test           # testes unitários (também rodam no CI do GitHub)
+make test           # testes unitários (CI só via workflow_dispatch)
 make dev            # desenvolvimento no Mac (ver abaixo)
 make homologate     # checklist de health/scan (ver abaixo)
 ```

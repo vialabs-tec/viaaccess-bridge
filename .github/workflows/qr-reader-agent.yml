@@ -1,15 +1,9 @@
+# Legacy Raspberry Pi QR agent (Go). New installs use install/qr-reader-firmware
+# (ESP32-S3). The tree stays for reference; CI no longer runs on push/PR.
 name: QR reader agent
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "install/qr-reader-agent/**"
-      - ".github/workflows/qr-reader-agent.yml"
-  pull_request:
-    paths:
-      - "install/qr-reader-agent/**"
-      - ".github/workflows/qr-reader-agent.yml"
+  workflow_dispatch:
 
 jobs:
   test:
