@@ -78,6 +78,11 @@ RuntimeConfig Parse(const std::string& json) {
     cfg.status_led.active_high = GetBool(led, "activeHigh", cfg.status_led.active_high);
     cfg.status_led.yellow_pin = GetInt(led, "yellowPin", cfg.status_led.yellow_pin);
   }
+  if (const cJSON* buzzer = Object(root, "buzzer")) {
+    cfg.buzzer.enabled = GetBool(buzzer, "enabled", cfg.buzzer.enabled);
+    cfg.buzzer.gpio_pin = GetInt(buzzer, "gpioPin", cfg.buzzer.gpio_pin);
+    cfg.buzzer.active_high = GetBool(buzzer, "activeHigh", cfg.buzzer.active_high);
+  }
   if (const cJSON* door = Object(root, "doorContact")) {
     cfg.door_contact.enabled = GetBool(door, "enabled", cfg.door_contact.enabled);
     cfg.door_contact.gpio_pin = GetInt(door, "gpioPin", cfg.door_contact.gpio_pin);
@@ -162,6 +167,11 @@ std::string Serialize(const RuntimeConfig& cfg, bool include_secrets) {
   cJSON_AddNumberToObject(led, "greenPin", cfg.status_led.green_pin);
   cJSON_AddNumberToObject(led, "bluePin", cfg.status_led.blue_pin);
   cJSON_AddBoolToObject(led, "activeHigh", cfg.status_led.active_high);
+
+  cJSON* buzzer = cJSON_AddObjectToObject(root, "buzzer");
+  cJSON_AddBoolToObject(buzzer, "enabled", cfg.buzzer.enabled);
+  cJSON_AddNumberToObject(buzzer, "gpioPin", cfg.buzzer.gpio_pin);
+  cJSON_AddBoolToObject(buzzer, "activeHigh", cfg.buzzer.active_high);
 
   cJSON* door = cJSON_AddObjectToObject(root, "doorContact");
   cJSON_AddBoolToObject(door, "enabled", cfg.door_contact.enabled);

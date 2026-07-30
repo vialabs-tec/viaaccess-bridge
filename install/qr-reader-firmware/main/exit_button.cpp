@@ -4,6 +4,7 @@
 #include <mutex>
 
 #include "app_state.hpp"
+#include "buzzer.hpp"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -119,6 +120,8 @@ void HandlePress() {
   const esp_err_t pulsed = relay::Pulse();
   if (pulsed != ESP_OK) {
     ESP_LOGW(kTag, "relay pulse failed: %s", esp_err_to_name(pulsed));
+  } else {
+    buzzer::BeepSuccess();
   }
 }
 

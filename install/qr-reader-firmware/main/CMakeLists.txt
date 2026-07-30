@@ -2,6 +2,7 @@ idf_component_register(
   SRCS
     "app_main.cpp"
     "app_state.cpp"
+    "buzzer.cpp"
     "clock_service.cpp"
     "config_json.cpp"
     "contingency_store.cpp"

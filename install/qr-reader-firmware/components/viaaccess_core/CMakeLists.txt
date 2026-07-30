@@ -4,6 +4,7 @@
 idf_component_register(
   SRCS
     "src/after_hours.cpp"
+    "src/buzzer.cpp"
     "src/clock.cpp"
     "src/commands.cpp"
     "src/config.cpp"

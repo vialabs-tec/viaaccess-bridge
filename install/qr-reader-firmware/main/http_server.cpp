@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "app_state.hpp"
+#include "buzzer.hpp"
 #include "cJSON.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -219,6 +220,18 @@ bool ApplyHardwareOverrides(const cJSON* root, viaaccess::RuntimeConfig* cfg) {
     cfg->exit_button.simulated = flag;
     touched = true;
   }
+  if (JsonBool(root, "buzzerEnabled", &flag)) {
+    cfg->buzzer.enabled = flag;
+    touched = true;
+  }
+  if (JsonInt(root, "buzzerGpioPin", &number) && number > 0) {
+    cfg->buzzer.gpio_pin = number;
+    touched = true;
+  }
+  if (JsonBool(root, "buzzerActiveHigh", &flag)) {
+    cfg->buzzer.active_high = flag;
+    touched = true;
+  }
   return touched;
 }
 
@@ -235,11 +248,13 @@ void PreserveLocalHardware(viaaccess::RuntimeConfig* cfg,
     return;
   }
   if (existing.relay.enabled || existing.door_contact.enabled ||
-      existing.exit_button.enabled || existing.status_led.enabled) {
+      existing.exit_button.enabled || existing.status_led.enabled ||
+      existing.buzzer.enabled) {
     cfg->relay = existing.relay;
     cfg->door_contact = existing.door_contact;
     cfg->exit_button = existing.exit_button;
     cfg->status_led = existing.status_led;
+    cfg->buzzer = existing.buzzer;
   }
 }
 
@@ -393,6 +408,10 @@ esp_err_t HandleSetupStatus(httpd_req_t* req) {
   cJSON_AddBoolToObject(hardware, "exitButtonEnabled", cfg.exit_button.enabled);
   cJSON_AddNumberToObject(hardware, "exitButtonGpioPin", cfg.exit_button.gpio_pin);
   cJSON_AddBoolToObject(hardware, "exitButtonSimulated", cfg.exit_button.simulated);
+  cJSON_AddBoolToObject(hardware, "buzzerEnabled", cfg.buzzer.enabled);
+  cJSON_AddNumberToObject(hardware, "buzzerGpioPin", cfg.buzzer.gpio_pin);
+  cJSON_AddBoolToObject(hardware, "buzzerActiveHigh", cfg.buzzer.active_high);
+  cJSON_AddBoolToObject(hardware, "buzzerAvailable", buzzer::available());
   cJSON_AddNumberToObject(hardware, "qrUartRxPin", cfg.qr_reader.rx_pin);
   cJSON_AddNumberToObject(hardware, "qrUartTxPin", cfg.qr_reader.tx_pin);
   cJSON_AddNumberToObject(hardware, "qrUartBaud", cfg.qr_reader.baud);

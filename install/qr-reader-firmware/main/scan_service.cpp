@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "app_state.hpp"
+#include "buzzer.hpp"
 #include "cJSON.h"
 #include "contingency_store.hpp"
 #include "esp_log.h"
@@ -182,6 +183,12 @@ Executed Execute(const viaaccess::RuntimeConfig& cfg, const std::string& qr_url)
   if (viaaccess::ShouldPulseRelay(cfg, executed.result)) {
     executed.relay_attempted = true;
     executed.relay_err = relay::Pulse();
+  }
+
+  if (viaaccess::IsAuthorized(executed.result)) {
+    buzzer::BeepSuccess();
+  } else {
+    buzzer::BeepFail();
   }
 
   app::State::Instance().RecordScan(executed.path, executed.result);

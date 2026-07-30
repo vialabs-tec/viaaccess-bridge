@@ -13,6 +13,7 @@ BINARY := $(BUILD_DIR)/viaaccess-core-tests
 SOURCES := \
 	main.cpp \
 	test_after_hours.cpp \
+	test_buzzer.cpp \
 	test_clock.cpp \
 	test_commands.cpp \
 	test_config.cpp \

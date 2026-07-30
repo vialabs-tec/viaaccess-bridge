@@ -105,6 +105,25 @@
               <span>Simular (sem hardware, para homologação)</span>
             </label>
           </fieldset>
+          <fieldset>
+            <legend>Buzzer</legend>
+            <label class="check">
+              <input name="buzzerEnabled" type="checkbox" checked />
+              <span>Alarme sonoro (porta aberta demais + feedback de passagem)</span>
+            </label>
+            <label>GPIO pin
+              <input name="buzzerGpioPin" type="number" value="7" min="1" />
+            </label>
+            <label class="check">
+              <input name="buzzerActiveHigh" type="checkbox" />
+              <span>Módulo aciona em nível alto</span>
+            </label>
+            <p style="margin:0.5rem 0 0;font-size:0.75rem;color:#9aa7b5;line-height:1.4">
+              Deixe desmarcado para o módulo 3 pinos comum (VCC/GND/I/O, gatilho em
+              nível baixo). Marcar errado deixa chiado no idle. Uso principal: alarme
+              contínuo em held open (padrão 60&nbsp;s); também beep em autorizado/negado.
+            </p>
+          </fieldset>
     </template>
 
     <div id="panel-provision" class="panel active">
@@ -122,7 +141,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
-          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · LED R/G/B 4/5/6 · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
+          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED R/G/B 4/5/6 · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
         </div>
         <details class="advanced" id="provision-advanced">
           <summary>Configuração avançada (GPIO / hostname LAN)</summary>
@@ -159,7 +178,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
-          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · LED R/G/B 4/5/6 · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
+          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED R/G/B 4/5/6 · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
         </div>
         <details class="advanced" id="manual-advanced">
           <summary>Configuração avançada (GPIO / hostname LAN)</summary>
@@ -210,9 +229,10 @@
     // device once: the status poll runs every 5 s and must not fight typing.
     let hardwarePrefilled = false;
     const numberFields = ['relayGpioPin', 'relayPulseMs', 'doorContactGpioPin',
-      'exitButtonGpioPin'];
+      'exitButtonGpioPin', 'buzzerGpioPin'];
     const flagFields = ['relayEnabled', 'relayActiveHigh', 'doorContactEnabled',
-      'doorContactSimulated', 'exitButtonEnabled', 'exitButtonSimulated'];
+      'doorContactSimulated', 'exitButtonEnabled', 'exitButtonSimulated',
+      'buzzerEnabled', 'buzzerActiveHigh'];
 
     function prefillHardware(hardware) {
       if (hardwarePrefilled || !hardware) return;
@@ -303,6 +323,9 @@
         exitButtonEnabled: fd.get('exitButtonEnabled') === 'on',
         exitButtonGpioPin: Number(fd.get('exitButtonGpioPin') || 12),
         exitButtonSimulated: fd.get('exitButtonSimulated') === 'on',
+        buzzerEnabled: fd.get('buzzerEnabled') === 'on',
+        buzzerGpioPin: Number(fd.get('buzzerGpioPin') || 7),
+        buzzerActiveHigh: fd.get('buzzerActiveHigh') === 'on',
         ...(mdnsHostname ? { mdnsHostname } : {}),
       };
     }

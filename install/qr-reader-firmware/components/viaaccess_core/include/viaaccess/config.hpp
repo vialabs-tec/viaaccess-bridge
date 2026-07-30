@@ -36,6 +36,8 @@ inline constexpr int kDefaultExitButtonPin = 12;
 inline constexpr int kDefaultStatusLedRedPin = 4;
 inline constexpr int kDefaultStatusLedGreenPin = 5;
 inline constexpr int kDefaultStatusLedBluePin = 6;
+// Active buzzer (5 V via transistor). GPIO drives the base/gate only.
+inline constexpr int kDefaultBuzzerPin = 7;
 
 // EP8280L in TTL mode: two GPIOs, module decodes and emits a terminated line.
 inline constexpr int kDefaultQrUartPort = 1;
@@ -69,6 +71,15 @@ struct StatusLedConfig {
   bool active_high = true;
   // Deprecated alias for red_pin, accepted when loading older configs.
   int yellow_pin = 0;
+};
+
+// Active buzzer module (VCC / GND / I/O). The common 3-pin boards trigger on a
+// low I/O, matching the reference module on the bench; active_high is for
+// transistor boards that sink when the GPIO is HIGH.
+struct BuzzerConfig {
+  bool enabled = true;
+  int gpio_pin = kDefaultBuzzerPin;
+  bool active_high = false;
 };
 
 // MC38 (or similar) reed switch. active_low: closed door pulls the line LOW.
@@ -149,6 +160,7 @@ struct RuntimeConfig {
 
   RelayConfig relay;
   StatusLedConfig status_led;
+  BuzzerConfig buzzer;
   DoorContactConfig door_contact;
   ExitButtonConfig exit_button;
   MdnsConfig mdns;

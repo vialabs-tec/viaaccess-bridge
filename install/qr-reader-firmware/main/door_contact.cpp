@@ -4,6 +4,7 @@
 #include <mutex>
 
 #include "app_state.hpp"
+#include "buzzer.hpp"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -100,8 +101,18 @@ void Emit(const viaaccess::DoorContactStep& step) {
   }
 
   for (int i = 0; i < step.count; ++i) {
-    const char* kind = viaaccess::DoorKindString(step.kinds[i]);
+    const viaaccess::DoorKind door_kind = step.kinds[i];
+    const char* kind = viaaccess::DoorKindString(door_kind);
     ESP_LOGI(kTag, "event %s", kind);
+
+    // Local held-open alarm is the main buzzer job: repeat until the door
+    // closes, independent of whether Identity accepted the event.
+    if (door_kind == viaaccess::DoorKind::kHeldOpen) {
+      buzzer::BeepHeldOpen();
+    } else if (door_kind == viaaccess::DoorKind::kClosed) {
+      buzzer::Stop();
+    }
+
     const identity::Outcome outcome = identity::PostDoorContactEvent(cfg, kind);
     if (outcome.unauthorized) {
       ESP_LOGE(kTag, "Identity rejected the device key on door-contact");

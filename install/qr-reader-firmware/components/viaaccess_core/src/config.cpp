@@ -46,6 +46,10 @@ RuntimeConfig Normalize(RuntimeConfig cfg) {
   }
   cfg.status_led.yellow_pin = 0;
 
+  if (cfg.buzzer.gpio_pin <= 0) {
+    cfg.buzzer.gpio_pin = kDefaultBuzzerPin;
+  }
+
   if (cfg.door_contact.gpio_pin <= 0) {
     cfg.door_contact.gpio_pin = kDefaultDoorContactPin;
   }

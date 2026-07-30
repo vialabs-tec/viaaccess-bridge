@@ -48,6 +48,10 @@ VA_TEST(FactoryHardwareDefaultsForEsp32s3) {
   CHECK_EQ(cfg.status_led.red_pin, 4);
   CHECK_EQ(cfg.status_led.green_pin, 5);
   CHECK_EQ(cfg.status_led.blue_pin, 6);
+  CHECK(cfg.buzzer.enabled);
+  CHECK_EQ(cfg.buzzer.gpio_pin, 7);
+  // Low-level I/O, matching the common 3-pin module (idle HIGH = silent).
+  CHECK(!cfg.buzzer.active_high);
   CHECK_EQ(cfg.qr_reader.rx_pin, 17);
   CHECK_EQ(cfg.qr_reader.tx_pin, 18);
 }
@@ -59,7 +63,7 @@ VA_TEST(FactoryPinsAvoidReservedEsp32s3Gpios) {
   const int pins[] = {
       cfg.relay.gpio_pin,      cfg.door_contact.gpio_pin, cfg.exit_button.gpio_pin,
       cfg.status_led.red_pin,  cfg.status_led.green_pin,  cfg.status_led.blue_pin,
-      cfg.qr_reader.rx_pin,    cfg.qr_reader.tx_pin,
+      cfg.buzzer.gpio_pin,     cfg.qr_reader.rx_pin,      cfg.qr_reader.tx_pin,
   };
   for (const int pin : pins) {
     CHECK(pin > 0);
@@ -75,7 +79,7 @@ VA_TEST(FactoryPinsAreUnique) {
   const int pins[] = {
       cfg.relay.gpio_pin,      cfg.door_contact.gpio_pin, cfg.exit_button.gpio_pin,
       cfg.status_led.red_pin,  cfg.status_led.green_pin,  cfg.status_led.blue_pin,
-      cfg.qr_reader.rx_pin,    cfg.qr_reader.tx_pin,
+      cfg.buzzer.gpio_pin,     cfg.qr_reader.rx_pin,      cfg.qr_reader.tx_pin,
   };
   constexpr int kCount = sizeof(pins) / sizeof(pins[0]);
   for (int i = 0; i < kCount; ++i) {

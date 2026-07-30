@@ -23,6 +23,7 @@ the host.
 | Door sensor | MC38 reed switch (optional) |
 | Exit button | Momentary REX button (optional) |
 | Status LED | KY-016 RGB, common cathode (optional) |
+| Buzzer | Active 5 V buzzer via transistor (optional) |
 | Clock | DS3231 module, I2C (optional, see below) |
 
 ### Factory pin map
@@ -38,6 +39,7 @@ The map below also avoids the strapping pins (0, 3, 45, 46), the native USB pair
 | Door contact (reed) | 11 | active low, closed door pulls LOW |
 | Exit button (REX) | 12 | active low |
 | Status LED R / G / B | 4 / 5 / 6 | R stale, G online, B setup |
+| Buzzer | 7 | 3-pin module, low-level trigger on I/O |
 | Reader UART RX | 17 | to the module TX, 9600 8N1 |
 | Reader UART TX | 18 | to the module RX, 9600 8N1 |
 | RTC SDA / SCL | 8 / 9 | I2C, DS3231 at 0x68 |
@@ -236,6 +238,29 @@ RGB module, **common cathode**, resistors already on the board. Factory map:
 `/health` reports `statusLed.module: "KY-016"` with the active pattern name. No SoftAP
 portal field is needed: the factory pins apply unless `config.json` overrides them.
 
+### Wiring the buzzer
+
+Common 3-pin active module (`VCC`, `GND`, `I/O`) with the driver on the board.
+Factory default is **low-level trigger** (GPIO LOW = on, HIGH = idle), same idea
+as the relay module: the inverted setting leaves the line half-driven and causes
+idle hiss.
+
+| Module | ESP32-S3 / supply |
+|---|---|
+| `VCC` | 5 V star in the panel; `3V3` is fine on a USB bench |
+| `GND` | GND (common) |
+| `I/O` | GPIO 7 |
+
+| Cue | Sound |
+|---|---|
+| Door **held open** past `heldOpenAfterMs` (default 60 s) | Repeating long beep until the door closes |
+| Authorized scan / REX | One short beep |
+| Denied / blocked scan | Two short beeps |
+
+The held-open alarm is the main reason to fit a buzzer: Identity still gets
+`door_held_open`, and the panel itself calls attention on site. Disable or move
+the pin under `/setup` → configuração avançada.
+
 ### Wiring the EP8280L
 
 The module ships as a USB HID keyboard ("USB-KBW"), which the S3 cannot host. Two
@@ -274,6 +299,7 @@ main/                       ESP-IDF application
   door_contact.cpp          MC38 reed (GPIO or simulated)
   exit_button.cpp           REX button (GPIO or simulated)
   status_led.cpp            KY-016 RGB status (R/G/B)
+  buzzer.cpp                active buzzer feedback (GPIO 7)
   web/                      embedded setup and Wi-Fi pages
 scripts/homologate.sh       field checklist against a flashed appliance
 test/host/                  host unit tests for viaaccess_core
