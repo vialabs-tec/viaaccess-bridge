@@ -33,15 +33,18 @@ namespace {
 constexpr const char* kTag = "viaaccess";
 
 void InitNvs() {
+  // With CONFIG_NVS_ENCRYPTION + HMAC, nvs_flash_init() registers the scheme,
+  // burns an HMAC_UP key into eFuse KEY0 on first boot if empty, and opens the
+  // default NVS partition encrypted. Truncated OTA images or plaintext leftovers
+  // from older firmware fail here; erase once and retry (re-run /setup after).
   esp_err_t err = nvs_flash_init();
-  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-    // A truncated OTA or a partition table change can leave NVS unusable; the
-    // device key is recoverable through reprovisioning, a brick is not.
-    ESP_LOGW(kTag, "NVS unusable, erasing: %s", esp_err_to_name(err));
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "NVS init failed (%s), erasing once", esp_err_to_name(err));
     ESP_ERROR_CHECK(nvs_flash_erase());
     err = nvs_flash_init();
   }
   ESP_ERROR_CHECK(err);
+  ESP_LOGI(kTag, "NVS ready (HMAC-encrypted)");
 }
 
 void StartMdns(const viaaccess::MdnsConfig& cfg, int port) {

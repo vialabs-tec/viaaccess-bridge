@@ -9,6 +9,13 @@ CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
+# Encrypt the default NVS partition (device key, Wi-Fi password, Wi-Fi stack
+# credentials). HMAC derives XTS keys from an eFuse block at runtime, so no
+# nvs_keys partition and no full flash encryption are required.
+CONFIG_NVS_ENCRYPTION=y
+CONFIG_NVS_SEC_KEY_PROTECT_USING_HMAC=y
+CONFIG_NVS_SEC_HMAC_EFUSE_KEY_ID=0
+
 # Octal PSRAM. This is what makes GPIO 33-37 unavailable on this module, so the
 # factory pin map in viaaccess/config.hpp stays in the low bank.
 CONFIG_SPIRAM=y

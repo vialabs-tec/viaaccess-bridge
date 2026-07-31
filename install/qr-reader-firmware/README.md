@@ -280,7 +280,7 @@ pipeline, so provisioning and homologation can be validated without the reader.
 ```
 CMakeLists.txt              project, firmware version stamp
 partitions.csv              16 MB: 2x4 MB OTA app slots + 1.5 MB LittleFS
-sdkconfig.defaults          S3 target, octal PSRAM, WDT, brownout, OTA rollback
+sdkconfig.defaults          S3 target, octal PSRAM, NVS HMAC encryption, OTA rollback
 components/viaaccess_core/  platform-free logic shared with the Go agent
 main/                       ESP-IDF application
   app_main.cpp              boot order
@@ -343,7 +343,10 @@ idf.py -p /dev/cu.usbmodem* flash monitor
 ```
 
 `erase-flash` matters on a board that ran other firmware: a stale NVS or a
-different partition table produces mount failures that look like bugs.
+different partition table produces mount failures that look like bugs. After
+moving to HMAC-encrypted NVS, a unit that still has plaintext NVS will erase that
+partition on first boot and need `/setup` again (the HMAC eFuse key, once burned,
+survives `erase-flash`).
 
 The version is stamped by CMake and reported in `/health` as `agentVersion`,
 which is also what Identity records per reader:
@@ -441,7 +444,7 @@ The page has three tabs, and the wiring fields are the same set in all of them
 | `GET /setup`, `GET /wifi` | Technician pages |
 | `GET /api/setup` | Current state for the pages (never returns the device key) |
 | `POST /api/setup` | Manual configuration with an `idb_` device key |
-| `POST /api/setup/provision` | Zero-touch claim with a `clm_` token |
+| `POST /api/setup/provision` | Zero-touch claim with a `clm_` token (saves after claim; no second Identity ping) |
 | `POST /api/setup/hardware` | Wiring only, no credentials and no Identity round-trip |
 | `GET /api/setup/wifi/scan` | Nearby networks, strongest first |
 | `POST /api/setup/wifi` | Store credentials and reconnect |
@@ -490,11 +493,32 @@ available.
 | Policy snapshot | LittleFS `/data` | Restored on boot so `/health` knows policy age and CONTINGENCY can verify offline |
 | Consumed intents | LittleFS `/data` | Anti-replay nonce store for offline tickets |
 | Outbox | LittleFS `/data` | Offline passages waiting for Identity flush |
-| Device key | NVS | A dumped filesystem image must not leak credentials |
-| Wi-Fi password | NVS | Same reason |
+| Device key | NVS (encrypted) | A dumped flash image must not yield usable credentials |
+| Wi-Fi password | NVS (encrypted) | Same reason |
 
 Writes are atomic (temp file plus rename), so a power cut during a save cannot
 leave a half-written config.
+
+### NVS encryption
+
+The default NVS partition is encrypted with XTS-AES. Keys are derived at runtime
+from an HMAC key in eFuse `BLOCK_KEY0` (`CONFIG_NVS_SEC_HMAC_EFUSE_KEY_ID=0`), so
+there is no `nvs_keys` partition and full flash encryption is not required.
+
+On the first boot of an encrypted build, if `KEY0` is empty the firmware
+generates an `HMAC_UP` key and burns it into that eFuse block. That burn is
+permanent for the chip. Later `erase-flash` clears NVS contents but keeps the
+HMAC key, so the same board re-encrypts NVS with the same derived keys.
+
+Upgrading a unit that still has **plaintext** NVS from an older firmware: flash
+the new image and power on once. Boot erases NVS when decryption fails, then
+reopens it encrypted. Re-run `/setup` (Wi-Fi + device key / claim) afterward.
+
+Optional factory burn of a known HMAC key (skip runtime generation):
+
+```bash
+espefuse.py -p /dev/cu.usbmodem* burn_key BLOCK_KEY0 hmac_key_file.bin HMAC_UP
+```
 
 ## Offline contingency
 
@@ -567,8 +591,9 @@ and a long `Location` header. The OTA client follows redirects explicitly and us
 
 Deliberate gaps, listed so nobody assumes parity with the Pi:
 
-- **NVS encryption.** Secrets are isolated in NVS so enabling encryption later
-  does not change this code.
+- **Full flash encryption / secure boot.** NVS secrets are encrypted via HMAC;
+  the rest of flash (app, LittleFS) is not ciphertext at rest.
+- **HTTPS on SoftAP `/setup`.** Provisioning still uses HTTP on the local AP/LAN.
 - **Full IANA timezone database.** Offline `after_hours` covers the zones ViaAccess
   ships today (`America/Sao_Paulo`, `UTC`); other IANA ids fail open until added
   to the offset table.

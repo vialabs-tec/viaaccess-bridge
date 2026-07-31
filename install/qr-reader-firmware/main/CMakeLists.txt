@@ -34,6 +34,7 @@ idf_component_register(
     esp-tls
     json
     nvs_flash
+    nvs_sec_provider
 )
 
 target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++17>)

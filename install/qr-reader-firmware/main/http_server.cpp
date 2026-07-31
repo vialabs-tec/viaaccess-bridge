@@ -282,9 +282,9 @@ viaaccess::RuntimeConfig BaseConfigFrom(const viaaccess::RuntimeConfig& existing
   return cfg;
 }
 
-// FinishLocalSave persists without touching the network. Rewiring is exactly the
-// job that happens while the link is down, so a wiring-only save must not depend
-// on Identity answering; the credential paths below go through FinishSave.
+// FinishLocalSave persists without touching the network. Used for wiring-only
+// saves (link may be down) and after a successful claim (Identity already answered
+// once; a second ping must not burn a consumed clm_ token if it times out).
 esp_err_t FinishLocalSave(httpd_req_t* req, viaaccess::RuntimeConfig cfg,
                           const std::string& message_prefix) {
   cfg = viaaccess::Normalize(std::move(cfg));
@@ -320,9 +320,10 @@ esp_err_t FinishLocalSave(httpd_req_t* req, viaaccess::RuntimeConfig cfg,
   return SendJson(req, 200, PrintAndDelete(root));
 }
 
-// FinishSave is the credential path: a new device key or Identity URL is worth
-// nothing if the appliance cannot reach Identity, so that is checked before the
-// old configuration is replaced.
+// FinishSave is the manual credential path (typed idb_ key / Identity URL). A
+// fresh ping is required there because nothing has talked to Identity yet.
+// Claim provision must not use this: ClaimProvision already reached Identity,
+// and failing a follow-up Ping after consume leaves the token burned with no save.
 esp_err_t FinishSave(httpd_req_t* req, viaaccess::RuntimeConfig cfg,
                      const std::string& message_prefix) {
   cfg = viaaccess::Normalize(std::move(cfg));
@@ -553,7 +554,8 @@ esp_err_t HandleSetupProvision(httpd_req_t* req) {
   ApplyMdnsHostname(&cfg, JsonString(root, "mdnsHostname"));
   cJSON_Delete(root);
 
-  return FinishSave(req, std::move(cfg), "Provisionamento concluído.");
+  // Persist immediately: claim already proved reachability and consumed the token.
+  return FinishLocalSave(req, std::move(cfg), "Provisionamento concluído.");
 }
 
 esp_err_t HandleWifiScan(httpd_req_t* req) {

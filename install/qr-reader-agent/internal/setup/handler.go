@@ -193,17 +193,9 @@ func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	if h.Ping != nil {
-		pingCtx, pingCancel := context.WithTimeout(r.Context(), 8*time.Second)
-		defer pingCancel()
-		if err := h.Ping(pingCtx, cfg.IdentityURL); err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]any{
-				"ok":    false,
-				"error": fmt.Sprintf("Identity inacessível: %v", err),
-			})
-			return
-		}
-	}
+	// Persist immediately after a successful claim. ClaimProvision already reached
+	// Identity and consumed the clm_ token; a follow-up Ping must not leave the
+	// token burned when the openapi probe times out (manual /api/setup still pings).
 	if err := h.Save(cfg); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 		return

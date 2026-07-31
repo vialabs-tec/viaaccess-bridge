@@ -89,7 +89,10 @@ func TestHandleProvisionSetsMDNSFromSlug(t *testing.T) {
 			saved = cfg
 			return nil
 		},
-		Ping: func(_ context.Context, _ string) error { return nil },
+		Ping: func(_ context.Context, _ string) error {
+			t.Fatal("provision must not ping after a successful claim")
+			return nil
+		},
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			body := `{"ok":true,"deviceId":"dev_1","deviceKey":"idb_test","identityUrl":"http://identity.example","accessPointSlug":"entrada-principal","defaults":{"emitDetection":true,"debounceMs":2000,"unlockOnAuthorizedOnly":true,"contingency":{"enabled":true,"onlineRedeemTimeoutMs":3000,"maxPolicyStaleHours":168}}}`
 			return &http.Response{
