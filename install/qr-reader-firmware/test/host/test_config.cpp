@@ -8,6 +8,7 @@ namespace {
 using viaaccess::ApplyRemoteDeviceConfig;
 using viaaccess::DefaultRuntimeConfig;
 using viaaccess::Normalize;
+using viaaccess::NormalizeBleBeaconUuid;
 using viaaccess::RemoteDeviceConfig;
 using viaaccess::ResetToSetup;
 using viaaccess::RuntimeConfig;
@@ -201,6 +202,123 @@ VA_TEST(ApplyRemoteDeviceConfigIgnoresZeroedNumbers) {
   CHECK(!changed);
   CHECK_EQ(cfg.debounce_ms, 2000);
   CHECK_EQ(cfg.contingency.max_policy_stale_hours, 168);
+}
+
+VA_TEST(NormalizeBleBeaconUuidAcceptsCanonicalForm) {
+  CHECK_EQ(NormalizeBleBeaconUuid("A1B2C3D4-E5F6-7890-ABCD-EF1234567890"),
+           std::string("a1b2c3d4-e5f6-7890-abcd-ef1234567890"));
+  CHECK_EQ(NormalizeBleBeaconUuid("  {a1b2c3d4-e5f6-7890-abcd-ef1234567890}  "),
+           std::string("a1b2c3d4-e5f6-7890-abcd-ef1234567890"));
+}
+
+VA_TEST(NormalizeBleBeaconUuidRejectsMalformed) {
+  CHECK_EQ(NormalizeBleBeaconUuid(""), std::string(""));
+  CHECK_EQ(NormalizeBleBeaconUuid("not-a-uuid"), std::string(""));
+  CHECK_EQ(NormalizeBleBeaconUuid("a1b2c3d4e5f67890abcdef1234567890"), std::string(""));
+  CHECK_EQ(NormalizeBleBeaconUuid("a1b2c3d4-e5f6-7890-abcd-ef123456789g"),
+           std::string(""));
+}
+
+VA_TEST(ApplyRemoteDeviceConfigAppliesBleBeacon) {
+  RuntimeConfig cfg = DefaultRuntimeConfig();
+
+  RemoteDeviceConfig remote;
+  remote.emit_detection = cfg.emit_detection;
+  remote.unlock_on_authorized_only = cfg.unlock_on_authorized_only;
+  remote.contingency.enabled = cfg.contingency.enabled;
+  remote.ble_beacon.present = true;
+  remote.ble_beacon.enabled = true;
+  remote.ble_beacon.uuid = "A1B2C3D4-E5F6-7890-ABCD-EF1234567890";
+  remote.ble_beacon.major = 1;
+  remote.ble_beacon.minor = 2;
+  remote.ble_beacon.tx_power = -59;
+
+  bool changed = false;
+  cfg = ApplyRemoteDeviceConfig(cfg, remote, &changed);
+
+  CHECK(changed);
+  CHECK(cfg.ble_beacon.enabled);
+  CHECK_EQ(cfg.ble_beacon.uuid, std::string("a1b2c3d4-e5f6-7890-abcd-ef1234567890"));
+  CHECK_EQ(cfg.ble_beacon.major, 1);
+  CHECK_EQ(cfg.ble_beacon.minor, 2);
+  CHECK_EQ(cfg.ble_beacon.tx_power, -59);
+
+  changed = true;
+  ApplyRemoteDeviceConfig(cfg, remote, &changed);
+  CHECK(!changed);
+}
+
+VA_TEST(ApplyRemoteDeviceConfigClearsBleBeaconWhenOmitted) {
+  RuntimeConfig cfg = DefaultRuntimeConfig();
+  cfg.ble_beacon.enabled = true;
+  cfg.ble_beacon.uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+  cfg.ble_beacon.major = 1;
+  cfg.ble_beacon.minor = 2;
+  cfg.ble_beacon.tx_power = -59;
+
+  RemoteDeviceConfig remote;
+  remote.emit_detection = cfg.emit_detection;
+  remote.unlock_on_authorized_only = cfg.unlock_on_authorized_only;
+  remote.contingency.enabled = cfg.contingency.enabled;
+  // ble_beacon.present stays false: Identity cleared proximity.
+
+  bool changed = false;
+  cfg = ApplyRemoteDeviceConfig(cfg, remote, &changed);
+
+  CHECK(changed);
+  CHECK(!cfg.ble_beacon.enabled);
+  CHECK_EQ(cfg.ble_beacon.uuid, std::string(""));
+  CHECK_EQ(cfg.ble_beacon.major, 0);
+  CHECK_EQ(cfg.ble_beacon.minor, 0);
+}
+
+VA_TEST(ApplyRemoteDeviceConfigDisablesBleBeaconWithEmptyUuid) {
+  RuntimeConfig cfg = DefaultRuntimeConfig();
+  cfg.ble_beacon.enabled = true;
+  cfg.ble_beacon.uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+  cfg.ble_beacon.major = 1;
+  cfg.ble_beacon.minor = 2;
+
+  RemoteDeviceConfig remote;
+  remote.emit_detection = cfg.emit_detection;
+  remote.unlock_on_authorized_only = cfg.unlock_on_authorized_only;
+  remote.contingency.enabled = cfg.contingency.enabled;
+  remote.ble_beacon.present = true;
+  remote.ble_beacon.enabled = true;
+  remote.ble_beacon.uuid = "bad";
+  remote.ble_beacon.major = 1;
+  remote.ble_beacon.minor = 2;
+  remote.ble_beacon.tx_power = -59;
+
+  bool changed = false;
+  cfg = ApplyRemoteDeviceConfig(cfg, remote, &changed);
+
+  CHECK(changed);
+  CHECK(!cfg.ble_beacon.enabled);
+  CHECK_EQ(cfg.ble_beacon.uuid, std::string(""));
+}
+
+VA_TEST(ApplyRemoteDeviceConfigAcceptsZeroMajorMinor) {
+  RuntimeConfig cfg = DefaultRuntimeConfig();
+
+  RemoteDeviceConfig remote;
+  remote.emit_detection = cfg.emit_detection;
+  remote.unlock_on_authorized_only = cfg.unlock_on_authorized_only;
+  remote.contingency.enabled = cfg.contingency.enabled;
+  remote.ble_beacon.present = true;
+  remote.ble_beacon.enabled = true;
+  remote.ble_beacon.uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+  remote.ble_beacon.major = 0;
+  remote.ble_beacon.minor = 0;
+  remote.ble_beacon.tx_power = -59;
+
+  bool changed = false;
+  cfg = ApplyRemoteDeviceConfig(cfg, remote, &changed);
+
+  CHECK(changed);
+  CHECK(cfg.ble_beacon.enabled);
+  CHECK_EQ(cfg.ble_beacon.major, 0);
+  CHECK_EQ(cfg.ble_beacon.minor, 0);
 }
 
 }  // namespace

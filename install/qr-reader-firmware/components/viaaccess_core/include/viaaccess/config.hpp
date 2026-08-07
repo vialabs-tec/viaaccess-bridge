@@ -51,6 +51,10 @@ inline constexpr int kDefaultRtcI2cPort = 0;
 inline constexpr int kDefaultRtcSdaPin = 8;
 inline constexpr int kDefaultRtcSclPin = 9;
 
+// Calibrated iBeacon measured power at 1 m (dBm). Identity sends this; the
+// member app uses it with RSSI for proximity decisions.
+inline constexpr int kDefaultBleBeaconTxPower = -59;
+
 // The reference 1-channel 5 V module triggers on a low input (0 V to 1.5 V), like
 // most opto-isolated boards; active_high is for bare transistor boards. Guessing
 // wrong energizes the coil at rest, which leaves the door unlocked instead of
@@ -141,6 +145,17 @@ struct RtcConfig {
   int scl_pin = kDefaultRtcSclPin;
 };
 
+// Proximity beacon advertised by the ESP32-S3 when Identity device-config
+// includes bleBeacon (BLE proximity gate for the member app). Not persisted from /setup;
+// Identity is the sole source of truth.
+struct BleBeaconConfig {
+  bool enabled = false;
+  std::string uuid;
+  int major = 0;
+  int minor = 0;
+  int tx_power = kDefaultBleBeaconTxPower;
+};
+
 struct RuntimeConfig {
   bool configured = false;
   std::string identity_url;
@@ -168,6 +183,7 @@ struct RuntimeConfig {
   WifiConfig wifi;
   QrReaderConfig qr_reader;
   RtcConfig rtc;
+  BleBeaconConfig ble_beacon;
 
   std::string setup_pin;
 };
@@ -179,6 +195,17 @@ struct RemoteContingencyConfig {
   int max_policy_stale_hours = 0;
 };
 
+// present is true when the JSON object included "bleBeacon". Absence means
+// Identity cleared proximity, so ApplyRemoteDeviceConfig disables advertising.
+struct RemoteBleBeaconConfig {
+  bool present = false;
+  bool enabled = false;
+  std::string uuid;
+  int major = 0;
+  int minor = 0;
+  int tx_power = kDefaultBleBeaconTxPower;
+};
+
 struct RemoteDeviceConfig {
   std::string access_point_slug;
   bool enabled = false;
@@ -186,7 +213,12 @@ struct RemoteDeviceConfig {
   int debounce_ms = 0;
   bool unlock_on_authorized_only = false;
   RemoteContingencyConfig contingency;
+  RemoteBleBeaconConfig ble_beacon;
 };
+
+// NormalizeBleBeaconUuid trims and lowercases a UUID string. Returns empty when
+// the value is not 8-4-4-4-12 hexadecimal (with optional braces).
+std::string NormalizeBleBeaconUuid(const std::string& value);
 
 RuntimeConfig DefaultRuntimeConfig();
 

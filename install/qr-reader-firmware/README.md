@@ -278,6 +278,19 @@ things are required before the reader works:
 Until the module is switched over, `POST /scan` still exercises the whole
 pipeline, so provisioning and homologation can be validated without the reader.
 
+### BLE proximity beacon
+
+When Identity device-config includes `bleBeacon` (access point BLE proximity
+enabled), the ESP32-S3 advertises an iBeacon-compatible manufacturer payload with
+ViaAccess company ID `0x5641` ("VA") — not Apple `0x004C`, because iOS
+CoreBluetooth hides true iBeacon mfg data from apps (so the member app would
+never see the door). UUID / major / minor / measured power come from Identity.
+No extra wiring: the radio is on-chip. `/health` reports
+`bleBeacon: { advertising, uuid, major, minor }` while enabled, or
+`bleBeacon: null` when Identity clears proximity. If NimBLE is unavailable at
+build or init time the appliance logs a warning and keeps serving passages
+without advertising.
+
 ## Layout
 
 ```
@@ -288,6 +301,7 @@ components/viaaccess_core/  platform-free logic shared with the Go agent
 main/                       ESP-IDF application
   app_main.cpp              boot order
   app_state.cpp             single owner of config and /health
+  ble_beacon.cpp            NimBLE proximity beacon from device-config
   storage.cpp               LittleFS documents, NVS secrets
   config_json.cpp           config.json and Identity payload binding
   wifi_manager.cpp          SoftAP portal, station

@@ -7,6 +7,7 @@
 #include <string>
 
 #include "app_state.hpp"
+#include "ble_beacon.hpp"
 #include "buzzer.hpp"
 #include "clock_service.hpp"
 #include "config_json.hpp"
@@ -131,9 +132,14 @@ extern "C" void app_main() {
     ESP_ERROR_CHECK_WITHOUT_ABORT(buzzer::ApplyConfig(cfg.buzzer));
     ESP_ERROR_CHECK_WITHOUT_ABORT(qr_reader::ApplyConfig(cfg.qr_reader));
     ESP_ERROR_CHECK_WITHOUT_ABORT(http_server::ApplyPort(cfg.http_port));
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ble_beacon::ApplyConfig(cfg.ble_beacon));
   });
   state.set_on_mdns_hostname_changed(ApplyHostname);
-  state.set_on_became_operational([] { sync_task::Start(); });
+  state.set_on_became_operational([] {
+    sync_task::Start();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(
+        ble_beacon::ApplyConfig(app::State::Instance().config().ble_beacon));
+  });
 
   ESP_ERROR_CHECK(wifi::Start(boot.wifi));
   StartMdns(boot.mdns, boot.http_port);
@@ -142,6 +148,7 @@ extern "C" void app_main() {
 
   if (boot.configured) {
     sync_task::Start();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ble_beacon::ApplyConfig(boot.ble_beacon));
   } else {
     ESP_LOGW(kTag, "not provisioned: connect to the %s network and open /setup",
              wifi::kSetupApSsid);

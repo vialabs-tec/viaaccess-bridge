@@ -4,6 +4,7 @@
 #include <string>
 
 #include "app_state.hpp"
+#include "ble_beacon.hpp"
 #include "clock_service.hpp"
 #include "contingency_store.hpp"
 #include "esp_log.h"
@@ -124,6 +125,11 @@ void SyncDeviceConfig(const viaaccess::RuntimeConfig& cfg) {
     ESP_LOGE(kTag, "cannot persist remote config: %s", esp_err_to_name(saved));
     return;
   }
+  // Re-arm the iBeacon from the freshly persisted overlay. SaveConfig also
+  // notifies on_config_applied; this call keeps the sync path explicit when the
+  // beacon ids change without a reboot.
+  ESP_ERROR_CHECK_WITHOUT_ABORT(
+      ble_beacon::ApplyConfig(state.config().ble_beacon));
   ESP_LOGI(kTag, "device-config applied from Identity");
 }
 

@@ -2,6 +2,7 @@
 
 #include <ctime>
 
+#include "ble_beacon.hpp"
 #include "cJSON.h"
 #include "contingency_store.hpp"
 #include "esp_log.h"
@@ -474,6 +475,16 @@ std::string State::HealthJson() const {
                           policy.ticket_verify_ready ? "ready" : "pending");
   cJSON_AddStringToObject(contingency, "localVerify",
                           kLocalContingencySupported ? "ready" : "pending");
+
+  if (config_.ble_beacon.enabled) {
+    cJSON* beacon = cJSON_AddObjectToObject(root, "bleBeacon");
+    cJSON_AddBoolToObject(beacon, "advertising", ble_beacon::advertising());
+    cJSON_AddStringToObject(beacon, "uuid", config_.ble_beacon.uuid.c_str());
+    cJSON_AddNumberToObject(beacon, "major", config_.ble_beacon.major);
+    cJSON_AddNumberToObject(beacon, "minor", config_.ble_beacon.minor);
+  } else {
+    cJSON_AddNullToObject(root, "bleBeacon");
+  }
 
   cJSON* policy_sync = cJSON_AddObjectToObject(root, "policySync");
   AddNullableString(policy_sync, "syncedAt", viaaccess::FormatRfc3339(policy.synced_at));

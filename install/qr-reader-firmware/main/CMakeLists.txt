@@ -2,6 +2,7 @@ idf_component_register(
   SRCS
     "app_main.cpp"
     "app_state.cpp"
+    "ble_beacon.cpp"
     "buzzer.cpp"
     "clock_service.cpp"
     "config_json.cpp"
@@ -24,6 +25,7 @@ idf_component_register(
   REQUIRES
     viaaccess_core
     app_update
+    bt
     driver
     esp_driver_i2c
     esp_http_client

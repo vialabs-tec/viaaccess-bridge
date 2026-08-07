@@ -4,6 +4,50 @@
 #include "viaaccess/strings.hpp"
 
 namespace viaaccess {
+namespace {
+
+bool IsHexDigit(char c) {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+
+int ClampU16(int value) {
+  if (value < 0) {
+    return 0;
+  }
+  if (value > 0xffff) {
+    return 0xffff;
+  }
+  return value;
+}
+
+}  // namespace
+
+std::string NormalizeBleBeaconUuid(const std::string& value) {
+  std::string trimmed = Trim(value);
+  if (!trimmed.empty() && trimmed.front() == '{' && trimmed.back() == '}') {
+    trimmed = trimmed.substr(1, trimmed.size() - 2);
+  }
+  trimmed = ToLower(Trim(trimmed));
+  if (trimmed.size() != 36) {
+    return "";
+  }
+  // 8-4-4-4-12 with hyphens at fixed offsets.
+  constexpr int kHyphenAt[] = {8, 13, 18, 23};
+  for (int at : kHyphenAt) {
+    if (trimmed[static_cast<std::size_t>(at)] != '-') {
+      return "";
+    }
+  }
+  for (std::size_t i = 0; i < trimmed.size(); ++i) {
+    if (trimmed[i] == '-') {
+      continue;
+    }
+    if (!IsHexDigit(trimmed[i])) {
+      return "";
+    }
+  }
+  return trimmed;
+}
 
 RuntimeConfig DefaultRuntimeConfig() { return RuntimeConfig{}; }
 
@@ -104,6 +148,16 @@ RuntimeConfig Normalize(RuntimeConfig cfg) {
     cfg.rtc.scl_pin = kDefaultRtcSclPin;
   }
 
+  cfg.ble_beacon.uuid = NormalizeBleBeaconUuid(cfg.ble_beacon.uuid);
+  cfg.ble_beacon.major = ClampU16(cfg.ble_beacon.major);
+  cfg.ble_beacon.minor = ClampU16(cfg.ble_beacon.minor);
+  if (cfg.ble_beacon.tx_power < -127 || cfg.ble_beacon.tx_power > 20) {
+    cfg.ble_beacon.tx_power = kDefaultBleBeaconTxPower;
+  }
+  if (cfg.ble_beacon.enabled && cfg.ble_beacon.uuid.empty()) {
+    cfg.ble_beacon.enabled = false;
+  }
+
   return cfg;
 }
 
@@ -162,6 +216,32 @@ RuntimeConfig ApplyRemoteDeviceConfig(RuntimeConfig cfg,
   if (remote.contingency.max_policy_stale_hours > 0 &&
       cfg.contingency.max_policy_stale_hours != remote.contingency.max_policy_stale_hours) {
     cfg.contingency.max_policy_stale_hours = remote.contingency.max_policy_stale_hours;
+    moved = true;
+  }
+
+  if (remote.ble_beacon.present) {
+    const std::string uuid = NormalizeBleBeaconUuid(remote.ble_beacon.uuid);
+    const int major = ClampU16(remote.ble_beacon.major);
+    const int minor = ClampU16(remote.ble_beacon.minor);
+    int tx_power = remote.ble_beacon.tx_power;
+    if (tx_power < -127 || tx_power > 20) {
+      tx_power = kDefaultBleBeaconTxPower;
+    }
+    bool enabled = remote.ble_beacon.enabled && !uuid.empty();
+    if (cfg.ble_beacon.enabled != enabled || cfg.ble_beacon.uuid != uuid ||
+        cfg.ble_beacon.major != major || cfg.ble_beacon.minor != minor ||
+        cfg.ble_beacon.tx_power != tx_power) {
+      cfg.ble_beacon.enabled = enabled;
+      cfg.ble_beacon.uuid = uuid;
+      cfg.ble_beacon.major = major;
+      cfg.ble_beacon.minor = minor;
+      cfg.ble_beacon.tx_power = tx_power;
+      moved = true;
+    }
+  } else if (cfg.ble_beacon.enabled || !cfg.ble_beacon.uuid.empty() ||
+             cfg.ble_beacon.major != 0 || cfg.ble_beacon.minor != 0) {
+    // Identity omitted bleBeacon: proximity was cleared in the dashboard.
+    cfg.ble_beacon = BleBeaconConfig{};
     moved = true;
   }
 

@@ -131,6 +131,14 @@ RuntimeConfig Parse(const std::string& json) {
     cfg.rtc.sda_pin = GetInt(rtc, "sdaPin", cfg.rtc.sda_pin);
     cfg.rtc.scl_pin = GetInt(rtc, "sclPin", cfg.rtc.scl_pin);
   }
+  if (const cJSON* beacon = Object(root, "bleBeacon")) {
+    cfg.ble_beacon.enabled = GetBool(beacon, "enabled", cfg.ble_beacon.enabled);
+    cfg.ble_beacon.uuid = GetString(beacon, "uuid", cfg.ble_beacon.uuid);
+    cfg.ble_beacon.major = GetInt(beacon, "major", cfg.ble_beacon.major);
+    cfg.ble_beacon.minor = GetInt(beacon, "minor", cfg.ble_beacon.minor);
+    cfg.ble_beacon.tx_power =
+        GetInt(beacon, "txPower", cfg.ble_beacon.tx_power);
+  }
 
   cJSON_Delete(root);
   return viaaccess::Normalize(cfg);
@@ -219,6 +227,13 @@ std::string Serialize(const RuntimeConfig& cfg, bool include_secrets) {
   cJSON_AddNumberToObject(rtc, "sdaPin", cfg.rtc.sda_pin);
   cJSON_AddNumberToObject(rtc, "sclPin", cfg.rtc.scl_pin);
 
+  cJSON* beacon = cJSON_AddObjectToObject(root, "bleBeacon");
+  cJSON_AddBoolToObject(beacon, "enabled", cfg.ble_beacon.enabled);
+  cJSON_AddStringToObject(beacon, "uuid", cfg.ble_beacon.uuid.c_str());
+  cJSON_AddNumberToObject(beacon, "major", cfg.ble_beacon.major);
+  cJSON_AddNumberToObject(beacon, "minor", cfg.ble_beacon.minor);
+  cJSON_AddNumberToObject(beacon, "txPower", cfg.ble_beacon.tx_power);
+
   char* printed = cJSON_PrintUnformatted(root);
   std::string out = printed != nullptr ? printed : "{}";
   cJSON_free(printed);
@@ -241,6 +256,16 @@ bool ParseRemoteDeviceConfig(const std::string& json, RemoteDeviceConfig* out) {
     out->contingency.online_redeem_timeout_ms =
         GetInt(contingency, "onlineRedeemTimeoutMs", 0);
     out->contingency.max_policy_stale_hours = GetInt(contingency, "maxPolicyStaleHours", 0);
+  }
+  out->ble_beacon = {};
+  if (const cJSON* beacon = Object(root, "bleBeacon")) {
+    out->ble_beacon.present = true;
+    out->ble_beacon.enabled = GetBool(beacon, "enabled", false);
+    out->ble_beacon.uuid = GetString(beacon, "uuid", "");
+    out->ble_beacon.major = GetInt(beacon, "major", 0);
+    out->ble_beacon.minor = GetInt(beacon, "minor", 0);
+    out->ble_beacon.tx_power =
+        GetInt(beacon, "txPower", viaaccess::kDefaultBleBeaconTxPower);
   }
   cJSON_Delete(root);
   return true;
