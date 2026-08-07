@@ -26,6 +26,9 @@ the host.
 | Buzzer | Active 5 V buzzer via transistor (optional) |
 | Clock | DS3231 module, I2C (optional, see below) |
 
+Pilot installs without a full custom PCB: see [carrier v0](docs/carrier-v0.md)
+(field screw terminals vs internal module headers, 5 V star, discrete NPN drivers).
+
 ### Factory pin map
 
 Octal PSRAM claims GPIO 33-37 and SPI flash claims 26-32 on this module, so the

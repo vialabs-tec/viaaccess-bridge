@@ -1,0 +1,27 @@
+(kicad_sch
+  (version 20231120)
+  (generator "viaaccess-carrier-v0-script")
+  (generator_version "8.0")
+  (uuid 94402cdd-ac2e-499e-a29c-60ad00452214)
+  (paper "A3")
+  (title_block
+    (title "ViaAccess QR Reader carrier-v0")
+    (date "2026-08-05")
+    (rev "0.1")
+    (company "Via Labs")
+    (comment 1 "Pilot carrier: field terminals + module headers + 5V star")
+    (comment 2 "See docs/carrier-v0.md and hardware/carrier-v0/README.md")
+  )
+  (lib_symbols)
+  (text "ViaAccess carrier-v0 — open carrier-v0.kicad_pcb for the board.\nSchematic graphics are minimal; connectivity is defined on the PCB nets\nand documented in docs/carrier-v0.md.\n\nJ1 DCIN: XH 2P wafer (+5V, GND) mates jack pigtail XH female\nJ2 LOCK: COM, NO, NC (from relay dry contacts J10)\nJ3 DOOR: REED=GPIO11, GND\nJ4 REX: GPIO12, GND\nJ5 READER: 5V, GND, TX->GPIO17, RX<-GPIO18 (external EP8280L)\nJ8A/J8B ESP32-S3-DevKitC-1 two 1x22 females 0.9in apart (USB left)\nJ9 RELAY: VCC GND IN (IN = Q2 open-collector + R3 10k pull-up)\nJ10 RELAY_DRY: COM NO NC\nJ12+Q1+R1 BUZZ: +5V, switched GND via NPN (GPIO7)\nQ2+R2 relay driver (GPIO10); R3 pull-up RELAY_IN to 5V\nJ13 LED: GND R G B\nJ14 RTC: 3V3 GND SDA SCL\nC1 1000uF star, C2 100n\nNo BSS138 — discrete 2N2222 drivers only"
+    (exclude_from_sim no)
+    (at 30 100 0)
+    (effects (font (size 1.27 1.27)) (justify left top))
+    (uuid 5d56353a-ab2f-4ee7-b71c-afe3a74ae3ae)
+  )
+  (sheet_instances
+    (path "/"
+      (page "1")
+    )
+  )
+)

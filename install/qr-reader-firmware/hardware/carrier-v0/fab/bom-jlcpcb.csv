@@ -1,0 +1,20 @@
+Comment,Designator,Footprint,LCSC Part #
+"100nF 50V X7R 0805 (decouple)",C2,C_0805,C49678
+"10k 0805 1% (RELAY_IN pull-up)",R3,R_0805,C17414
+"1000uF 16V electrolytic radial pitch 5mm (+ = pad1 left)",C1,C_Radial_P5,C439782
+"XH 2P wafer pitch 2.5mm DCIN",J1,Connector_XH_2.50mm_1x02,C7429632
+"Screw terminal 3P pitch 5.08mm (LOCK)",J2,TerminalBlock_3P_P5.08,C474953
+"Screw terminal 2P pitch 5.08mm (DOOR)",J3,TerminalBlock_2P_P5.08,C8465
+"Screw terminal 2P pitch 5.08mm (REX)",J4,TerminalBlock_2P_P5.08,C8465
+"Screw terminal 4P pitch 5.08mm (READER)",J5,TerminalBlock_4P_P5.08,C53447001
+"Female header 1x22 2.54mm TH (DevKit J1 row; pair with J8B at 22.86mm)",J8A,PinSocket_1x22_P2.54,C7499337
+"Female header 1x22 2.54mm TH (DevKit J3 row; pair with J8A at 22.86mm)",J8B,PinSocket_1x22_P2.54,C7499337
+"Pin header male 1x3 2.54mm (RELAY)",J9,PinHeader_1x03_P2.54,C2937625
+"Pin header male 1x3 2.54mm (RELAY_DRY)",J10,PinHeader_1x03_P2.54,C2937625
+"Pin header male 1x2 2.54mm (BUZZ)",J12,PinHeader_1x02_P2.54,C492401
+"Pin header male 1x4 2.54mm (LED)",J13,PinHeader_1x04_P2.54,C2691448
+"Pin header male 1x4 2.54mm (RTC)",J14,PinHeader_1x04_P2.54,C2691448
+"2N2222A TO-92 NPN (buzzer) — confirm CBE pinout vs silk",Q1,TO92,C5330385
+"2N2222A TO-92 NPN (relay) — confirm CBE pinout vs silk",Q2,TO92,C5330385
+"1k axial carbon film D2.3xL6.5mm (Q1 base)",R1,R_Axial_P7.62,C120055
+"1k axial carbon film D2.3xL6.5mm (Q2 base)",R2,R_Axial_P7.62,C120055
