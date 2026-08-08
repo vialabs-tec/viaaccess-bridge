@@ -14,7 +14,8 @@ namespace viaaccess {
 
 inline constexpr int kDefaultHttpPort = 3710;
 inline constexpr int kDefaultDebounceMs = 2000;
-inline constexpr int kDefaultRelayPulseMs = 3000;
+/** Default lock hold after UNLOCK / REX / redeem (matches Identity unlockHoldSeconds). */
+inline constexpr int kDefaultRelayPulseMs = 15000;
 inline constexpr int kDefaultDoorDebounceMs = 50;
 inline constexpr int kDefaultDoorHeldOpenAfterMs = 60000;
 inline constexpr int kDefaultExitDebounceMs = 50;

@@ -65,7 +65,7 @@
               <input name="relayGpioPin" type="number" value="10" min="1" />
             </label>
             <label>Pulso (ms)
-              <input name="relayPulseMs" type="number" value="3000" min="100" />
+              <input name="relayPulseMs" type="number" value="15000" min="100" />
             </label>
             <label class="check">
               <input name="relayActiveHigh" type="checkbox" />
@@ -315,7 +315,7 @@
       return {
         relayEnabled: fd.get('relayEnabled') === 'on',
         relayGpioPin: Number(fd.get('relayGpioPin') || 10),
-        relayPulseMs: Number(fd.get('relayPulseMs') || 3000),
+        relayPulseMs: Number(fd.get('relayPulseMs') || 15000),
         relayActiveHigh: fd.get('relayActiveHigh') === 'on',
         doorContactEnabled: fd.get('doorContactEnabled') === 'on',
         doorContactGpioPin: Number(fd.get('doorContactGpioPin') || 11),

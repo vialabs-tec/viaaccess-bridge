@@ -4,7 +4,9 @@ Firmware for the ESP32-S3 based QR Reader appliance. It is a port of
 [`qr-reader-agent`](../qr-reader-agent) (Go, Raspberry Pi) to ESP-IDF, keeping the
 same HTTP contract, the same `config.json` schema and the same Identity bridge
 endpoints. Identity cannot tell the two products apart except through the
-`X-ViaAccess-Agent-Version` header.
+`X-ViaAccess-Agent-Version` header. Authenticated bridge calls also send
+`X-ViaAccess-Relay-Pulse-Ms` so Identity can align unlock countdown and
+door-contact windows with the local `relay.pulseMs` from `/setup`.
 
 Why a second implementation instead of cross-compiling the agent: the S3 has no
 Linux, no USB host and no Ethernet MAC, so the three platform-bound layers had to
@@ -38,7 +40,7 @@ The map below also avoids the strapping pins (0, 3, 45, 46), the native USB pair
 
 | Function | GPIO | Notes |
 |---|---|---|
-| Relay | 10 | low-level trigger, 3000 ms pulse |
+| Relay | 10 | low-level trigger, **15000 ms** pulse by default (matches Identity app countdown). Appliances that already saved NVS keep the old value until `/setup` is saved again. |
 | Door contact (reed) | 11 | active low, closed door pulls LOW |
 | Exit button (REX) | 12 | active low |
 | Status LED R / G / B | 4 / 5 / 6 | R stale, G online, B setup |

@@ -1,5 +1,6 @@
 #include "identity_client.hpp"
 
+#include <cstdio>
 #include <cstring>
 #include <ctime>
 
@@ -8,6 +9,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "viaaccess/config.hpp"
 #include "viaaccess/strings.hpp"
 #include "viaaccess/time.hpp"
 #include "viaaccess/version.hpp"
@@ -97,6 +99,12 @@ void SetBridgeHeaders(esp_http_client_handle_t client,
   esp_http_client_set_header(client, "Authorization", authorization.c_str());
   esp_http_client_set_header(client, "X-ViaAccess-Relay-Enabled",
                             cfg.relay.enabled ? "true" : "false");
+  // Identity uses pulse width for unlock countdown / door_opened vs forced windows.
+  char pulse_ms[16];
+  std::snprintf(pulse_ms, sizeof(pulse_ms), "%d",
+                cfg.relay.pulse_ms > 0 ? cfg.relay.pulse_ms
+                                       : viaaccess::kDefaultRelayPulseMs);
+  esp_http_client_set_header(client, "X-ViaAccess-Relay-Pulse-Ms", pulse_ms);
   esp_http_client_set_header(client, "X-ViaAccess-Door-Contact-Enabled",
                             cfg.door_contact.enabled ? "true" : "false");
   esp_http_client_set_header(client, "X-ViaAccess-Exit-Button-Enabled",
