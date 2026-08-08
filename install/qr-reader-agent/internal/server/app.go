@@ -508,7 +508,7 @@ func (a *App) syncDeviceConfigLocked(client *syncclient.Client, ctx context.Cont
 
 func (a *App) runCommandLoop(ctx context.Context) {
 	// Adaptive backoff for Vercel-hosted Identity (no long-poll):
-	// idle ~10s; after unlock activity Identity suggests ~2s via pollAfterMs.
+	// idle ~3s; after unlock activity Identity suggests ~1s via pollAfterMs.
 	const (
 		defaultIdle = 10 * time.Second
 		defaultFast = 2 * time.Second

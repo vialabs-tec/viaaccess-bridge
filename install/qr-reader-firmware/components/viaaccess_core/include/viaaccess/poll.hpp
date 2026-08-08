@@ -5,8 +5,10 @@
 
 namespace viaaccess {
 
-inline constexpr int kCommandPollIdleMs = 10000;
-inline constexpr int kCommandPollFastMs = 2000;
+// Floors for Identity pollAfterMs hints. Keep in sync with
+// viaaccess-identity BRIDGE_COMMAND_POLL_* constants.
+inline constexpr int kCommandPollIdleMs = 3000;
+inline constexpr int kCommandPollFastMs = 1000;
 inline constexpr int kCommandPollMaxMs = 60000;
 inline constexpr int kPolicySyncIntervalMs = 60000;
 inline constexpr int kIdentityProbeIntervalMs = 30000;
