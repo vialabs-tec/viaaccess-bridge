@@ -36,8 +36,6 @@
     .factory, .netbar { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; font-size: 0.8rem; color: #9aa7b5; line-height: 1.45; }
     .factory strong, .netbar strong { color: #e8edf2; font-weight: 600; }
     .netbar.offline { border-color: #7f1d1d; }
-    details.advanced { margin-top: 1rem; border: 1px solid #2a3441; border-radius: 8px; padding: 0.5rem 0.75rem 0.75rem; }
-    details.advanced summary { cursor: pointer; font-size: 0.85rem; color: #9aa7b5; padding: 0.35rem 0; }
   </style>
 </head>
 <body>
@@ -173,24 +171,16 @@
           <span class="field-hint">O token colado não traz o endereço do Identity. Use o mesmo
             host do admin, alcançável desta rede.</span>
         </label>
+        <label>Hostname .local (opcional)
+          <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
+          <span class="field-hint">Vazio: usa o slug do ponto (<code>viaaccess-qr-{slug}</code>). Só
+            preciso se houver um segundo leitor no mesmo ponto.</span>
+        </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
-          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
+          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
+          Para alterar GPIO, LED ou buzzer, use a aba <strong>Fiação</strong> depois.
         </div>
-        <details class="advanced" id="provision-advanced">
-          <summary>Configuração avançada (GPIO / hostname LAN)</summary>
-          <fieldset>
-            <legend>Hostname mDNS (opcional)</legend>
-            <label>Hostname .local
-              <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
-            </label>
-            <p style="margin:0.5rem 0 0;font-size:0.75rem;color:#9aa7b5;line-height:1.4">
-              Vazio: usa o slug do ponto (<code>viaaccess-qr-{slug}</code>). Preencha só se houver
-              um segundo leitor no mesmo ponto.
-            </p>
-          </fieldset>
-          <div class="wiring-host"></div>
-        </details>
         <button type="submit">Provisionar</button>
         <div id="provision-msg" class="msg"></div>
       </form>
@@ -210,20 +200,16 @@
         <label>Slug do ponto (opcional)
           <input name="accessPointSlug" placeholder="entrada-principal" />
         </label>
+        <label>Hostname .local (opcional)
+          <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
+          <span class="field-hint">Vazio: usa o slug do ponto (<code>viaaccess-qr-{slug}</code>). Só
+            preciso se houver um segundo leitor no mesmo ponto.</span>
+        </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
-          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
+          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
+          Para alterar GPIO, LED ou buzzer, use a aba <strong>Fiação</strong>.
         </div>
-        <details class="advanced" id="manual-advanced">
-          <summary>Configuração avançada (GPIO / hostname LAN)</summary>
-          <fieldset>
-            <legend>Hostname mDNS (opcional)</legend>
-            <label>Hostname .local
-              <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
-            </label>
-          </fieldset>
-          <div class="wiring-host"></div>
-        </details>
         <label class="check">
           <input name="emitDetection" type="checkbox" checked />
           <span>Emitir detection no ViaAccess (recomendado sem câmera na porta)</span>
@@ -235,10 +221,19 @@
 
     <div id="panel-wiring" class="panel">
       <form id="wiring-form">
-        <p>Só a fiação, para um leitor já provisionado. Credenciais, Identity e Wi‑Fi
-          ficam como estão, e nada é enviado ao Identity, então funciona com a rede fora.</p>
+        <p>GPIO, LED e buzzer. Credenciais, Identity e Wi‑Fi ficam como estão; nada é
+          enviado ao Identity (funciona com a rede fora). Hostname .local também pode
+          ser definido nas abas Provisionar / Manual.</p>
         <label class="pin-field" hidden>PIN de fábrica
           <input name="pin" type="password" autocomplete="off" />
+        </label>
+        <div class="factory">
+          <strong>Mapa de fábrica ESP32-S3</strong><br />
+          Relé GPIO 10 · Porta GPIO 11 · REX GPIO 12 · Buzzer GPIO 7 · LED WS2812 GPIO 38 · UART RX 17 / TX 18 · RTC SDA 8 / SCL 9
+        </div>
+        <label>Hostname .local (opcional)
+          <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
+          <span class="field-hint">Vazio: mantém o hostname atual (ou o derivado do slug).</span>
         </label>
         <div class="wiring-host"></div>
         <button type="submit">Salvar fiação</button>
@@ -251,16 +246,13 @@
     const hintUrl = document.getElementById('hint-url');
     const pinFields = document.querySelectorAll('.pin-field');
 
-    // The same wiring fields belong to three forms (claim, manual and wiring-only),
-    // so they are written once and cloned instead of kept in triplicate.
+    // Wiring lives only on the Fiação tab (one form, one clone of the template).
     const wiringFields = document.getElementById('wiring-fields');
-    document.querySelectorAll('.wiring-host').forEach((host) => {
-      host.appendChild(wiringFields.content.cloneNode(true));
-    });
+    const wiringHost = document.querySelector('#wiring-form .wiring-host');
+    wiringHost.appendChild(wiringFields.content.cloneNode(true));
 
-    // Opening the advanced block submits every wiring field, so the static
-    // factory defaults would overwrite stored pins nobody touched. Fill from the
-    // device once: the status poll runs every 5 s and must not fight typing.
+    // Fill from the device once: the status poll runs every 5 s and must not
+    // fight typing on the Fiação form.
     let hardwarePrefilled = false;
     const numberFields = ['relayGpioPin', 'relayPulseMs', 'doorContactGpioPin',
       'exitButtonGpioPin', 'buzzerGpioPin', 'statusLedWs2812Pin', 'statusLedBrightness',
@@ -269,24 +261,27 @@
       'doorContactSimulated', 'exitButtonEnabled', 'exitButtonSimulated',
       'buzzerEnabled', 'buzzerActiveHigh', 'statusLedEnabled', 'statusLedActiveHigh'];
 
-    function prefillHardware(hardware) {
+    function prefillHardware(hardware, mdnsHostname) {
       if (hardwarePrefilled || !hardware) return;
       hardwarePrefilled = true;
+      const form = document.getElementById('wiring-form');
       numberFields.forEach((name) => {
         if (typeof hardware[name] !== 'number') return;
-        document.querySelectorAll('[name="' + name + '"]').forEach((el) => {
-          el.value = hardware[name];
-        });
+        const el = form.querySelector('[name="' + name + '"]');
+        if (el) el.value = hardware[name];
       });
       flagFields.forEach((name) => {
         if (typeof hardware[name] !== 'boolean') return;
-        document.querySelectorAll('[name="' + name + '"]').forEach((el) => {
-          el.checked = hardware[name];
-        });
+        const el = form.querySelector('[name="' + name + '"]');
+        if (el) el.checked = hardware[name];
       });
       if (typeof hardware.statusLedDriver === 'string') {
-        document.querySelectorAll('[name="statusLedDriver"]').forEach((el) => {
-          el.value = hardware.statusLedDriver;
+        const el = form.querySelector('[name="statusLedDriver"]');
+        if (el) el.value = hardware.statusLedDriver;
+      }
+      if (typeof mdnsHostname === 'string' && mdnsHostname) {
+        document.querySelectorAll('[name="mdnsHostname"]').forEach((el) => {
+          el.value = mdnsHostname;
         });
       }
     }
@@ -297,7 +292,7 @@
         const data = await res.json();
         const net = data.network || {};
         const clock = data.clock || {};
-        prefillHardware(data.hardware);
+        prefillHardware(data.hardware, data.mdnsHostname);
         // Only a factory image with setupPin in config.json needs the field, so
         // asking every installer for a PIN that does not exist is pure noise.
         pinFields.forEach((field) => { field.hidden = !data.pinRequired; });
@@ -349,9 +344,12 @@
     claimInput.addEventListener('input', syncIdentityField);
     syncIdentityField();
 
-    function hardwarePayload(fd, advancedOpen) {
-      if (!advancedOpen) return {};
+    function mdnsPayload(fd) {
       const mdnsHostname = String(fd.get('mdnsHostname') || '').trim();
+      return mdnsHostname ? { mdnsHostname } : {};
+    }
+
+    function hardwarePayload(fd) {
       return {
         relayEnabled: fd.get('relayEnabled') === 'on',
         relayGpioPin: Number(fd.get('relayGpioPin') || 10),
@@ -374,7 +372,7 @@
         statusLedGreenPin: Number(fd.get('statusLedGreenPin') || 5),
         statusLedBluePin: Number(fd.get('statusLedBluePin') || 6),
         statusLedActiveHigh: fd.get('statusLedActiveHigh') === 'on',
-        ...(mdnsHostname ? { mdnsHostname } : {}),
+        ...mdnsPayload(fd),
       };
     }
 
@@ -409,7 +407,6 @@
       });
     }
 
-    const provisionAdvanced = document.getElementById('provision-advanced');
     submitForm(
       document.getElementById('provision-form'),
       document.getElementById('provision-msg'),
@@ -418,11 +415,10 @@
         pin: fd.get('pin') || '',
         claimInput: fd.get('claimInput'),
         identityUrl: fd.get('identityUrl') || '',
-        ...hardwarePayload(fd, provisionAdvanced.open),
+        ...mdnsPayload(fd),
       }),
     );
 
-    const manualAdvanced = document.getElementById('manual-advanced');
     submitForm(
       document.getElementById('setup-form'),
       document.getElementById('manual-msg'),
@@ -433,7 +429,7 @@
         deviceKey: fd.get('deviceKey'),
         accessPointSlug: fd.get('accessPointSlug') || '',
         emitDetection: fd.get('emitDetection') === 'on',
-        ...hardwarePayload(fd, manualAdvanced.open),
+        ...mdnsPayload(fd),
       }),
     );
 
@@ -443,7 +439,7 @@
       '/api/setup/hardware',
       (fd) => ({
         pin: fd.get('pin') || '',
-        ...hardwarePayload(fd, true),
+        ...hardwarePayload(fd),
       }),
     );
   </script>

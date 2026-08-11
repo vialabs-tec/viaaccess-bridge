@@ -55,7 +55,7 @@ TTL serial mode at 9600 baud, one scan per line; the Pi's keyboard-wedge path ha
 no equivalent on this board.
 
 Defaults live in `components/viaaccess_core/include/viaaccess/config.hpp` and can
-be overridden per install in the advanced section of `/setup`. The I2C pins are
+be overridden per install on the **Fiação** tab of `/setup`. The I2C pins are
 read at boot, so changing them takes effect after a reset.
 
 ### Battery-backed clock (DS3231)
@@ -240,8 +240,8 @@ for status so the external KY-016 module is optional.
 | `CONTINGENCY` | Red | Blink |
 | `SETUP` | Blue | Blink |
 
-`/health` reports `statusLed.module: "WS2812"` (or `"KY-016"`). `/setup` → configuração
-avançada can switch driver, GPIO, and brightness.
+`/health` reports `statusLed.module: "WS2812"` (or `"KY-016"`). `/setup` → **Fiação**
+can switch driver, GPIO, and brightness.
 
 Optional **KY-016** (common cathode) if the LED must sit off the DevKit:
 
@@ -275,7 +275,7 @@ idle hiss.
 
 The held-open alarm is the main reason to fit a buzzer: Identity still gets
 `door_held_open`, and the panel itself calls attention on site. Disable or move
-the pin under `/setup` → configuração avançada.
+the pin under `/setup` → **Fiação**.
 
 ### Wiring the EP8280L
 
@@ -453,21 +453,17 @@ the form stays at one field. If the claim answers with a loopback `identityUrl`
 (a dev server behind `APP_URL=localhost`), the appliance keeps the host that
 actually worked instead of storing an address it cannot reach.
 
-The advanced block is collapsed on purpose. Opening it sends the whole hardware
-map with the request, so an installer who wired something other than the factory
-pins should open it; leaving it closed keeps the factory map and, on a
-reprovision, whatever pins were already stored. Its fields are filled from
-`/api/setup` on load, once, so opening the block on a reprovision does not quietly
-push the factory pins over a custom panel.
-
-The page has three tabs, and the wiring fields are the same set in all of them
-(one `<template>`, cloned):
+GPIO, LED and buzzer live only on the **Fiação** tab (`POST /api/setup/hardware`).
+Optional mDNS hostname (`.local`) is on Provisionar, Manual and Fiação.
+Provisionar / Manual apply the factory pin map (and keep any pins already stored
+on reprovision) without sending GPIO fields. Fiação is filled from `/api/setup`
+on load, once, so a refresh does not fight typing.
 
 | Tab | For |
 |---|---|
-| Provisionar (QR) | The normal install: paste the claim, wiring optional in the advanced block |
-| Manual | An `idb_` device key typed by hand, when no claim is available |
-| Fiação | Wiring on an appliance already provisioned, keeping credentials and skipping Identity |
+| Provisionar (QR) | Normal install: paste the claim; factory GPIO; optional `.local` hostname |
+| Manual | An `idb_` device key typed by hand; optional `.local` hostname |
+| Fiação | GPIO / LED / buzzer (+ hostname); keeps credentials and skips Identity |
 
 ## HTTP surface
 
