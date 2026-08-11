@@ -24,11 +24,12 @@ the host.
 | Lock | Relay module, 5 V coil, dry contact to the strike |
 | Door sensor | MC38 reed switch (optional) |
 | Exit button | Momentary REX button (optional) |
-| Status LED | KY-016 RGB, common cathode (optional) |
+| Status LED | DevKit onboard WS2812 (default); KY-016 RGB optional |
 | Buzzer | Active 5 V buzzer via transistor (optional) |
 | Clock | DS3231 module, I2C (optional, see below) |
 
 Pilot installs without a full custom PCB: see [carrier v0](docs/carrier-v0.md)
+and the [case v0](hardware/case-v0/) enclosure skeleton (FreeCAD / OpenSCAD).
 (field screw terminals vs internal module headers, 5 V star, discrete NPN drivers).
 
 ### Factory pin map
@@ -43,7 +44,7 @@ The map below also avoids the strapping pins (0, 3, 45, 46), the native USB pair
 | Relay | 10 | low-level trigger, **15000 ms** pulse by default (matches Identity app countdown). Appliances that already saved NVS keep the old value until `/setup` is saved again. |
 | Door contact (reed) | 11 | active low, closed door pulls LOW |
 | Exit button (REX) | 12 | active low |
-| Status LED R / G / B | 4 / 5 / 6 | R stale, G online, B setup |
+| Status LED | GPIO 38 (WS2812 onboard) | KY-016 on 4/5/6 optional |
 | Buzzer | 7 | 3-pin module, low-level trigger on I/O |
 | Reader UART RX | 17 | to the module TX, 9600 8N1 |
 | Reader UART TX | 18 | to the module RX, 9600 8N1 |
@@ -222,9 +223,27 @@ curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/exit-button/sim \
   -H 'Content-Type: application/json' -d '{"state":"idle"}'
 ```
 
-### Wiring the status LED (KY-016)
+### Status LED (onboard WS2812 by default)
 
-RGB module, **common cathode**, resistors already on the board. Factory map:
+The ESP32-S3-DevKitC-1 already has an addressable RGB LED. The appliance uses it
+for status so the external KY-016 module is optional.
+
+| Board revision | WS2812 GPIO |
+|---|---|
+| DevKitC-1 **v1.1** (default) | **38** |
+| DevKitC-1 v1.0 | 48 |
+
+| Mode | Color | Pattern |
+|---|---|---|
+| `ONLINE` | Green | Solid |
+| `SYNC_STALE` | Red | Solid |
+| `CONTINGENCY` | Red | Blink |
+| `SETUP` | Blue | Blink |
+
+`/health` reports `statusLed.module: "WS2812"` (or `"KY-016"`). `/setup` → configuração
+avançada can switch driver, GPIO, and brightness.
+
+Optional **KY-016** (common cathode) if the LED must sit off the DevKit:
 
 | KY-016 | ESP32-S3 |
 |---|---|
@@ -233,15 +252,7 @@ RGB module, **common cathode**, resistors already on the board. Factory map:
 | G | GPIO 5 |
 | B | GPIO 6 |
 
-| Mode | Channel | Pattern |
-|---|---|---|
-| `ONLINE` | Green | Solid |
-| `SYNC_STALE` | Red | Solid |
-| `CONTINGENCY` | Red | Blink |
-| `SETUP` | Blue | Blink |
-
-`/health` reports `statusLed.module: "KY-016"` with the active pattern name. No SoftAP
-portal field is needed: the factory pins apply unless `config.json` overrides them.
+Set driver to `ky016` in `/setup` (or `statusLed.driver` in `config.json`).
 
 ### Wiring the buzzer
 
@@ -276,6 +287,10 @@ things are required before the reader works:
 2. Wire the TTL header instead of the USB cable: 5 V, GND, module TX to GPIO 17,
    module RX to GPIO 18. Level shifting is unnecessary, the module drives 3.3 V
    logic, but the 5 V supply must be able to source ~150 mA plus the relay.
+   On the pilot case the READER (and DOOR / REX / LOCK) screw terminals stay
+   **inside**; jackets enter through **PG glands** with a cable tie before the
+   block so a pull cannot yank the wire out of the screw — details and pin
+   colors in [`docs/carrier-v0.md`](docs/carrier-v0.md).
 
 Until the module is switched over, `POST /scan` still exercises the whole
 pipeline, so provisioning and homologation can be validated without the reader.
@@ -317,7 +332,7 @@ main/                       ESP-IDF application
   relay.cpp                 lock output
   door_contact.cpp          MC38 reed (GPIO or simulated)
   exit_button.cpp           REX button (GPIO or simulated)
-  status_led.cpp            KY-016 RGB status (R/G/B)
+  status_led.cpp            Status RGB (WS2812 onboard or KY-016)
   buzzer.cpp                active buzzer feedback (GPIO 7)
   web/                      embedded setup and Wi-Fi pages
 scripts/homologate.sh       field checklist against a flashed appliance

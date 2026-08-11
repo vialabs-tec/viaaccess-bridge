@@ -34,9 +34,15 @@ inline constexpr const char* kDeviceKeyPrefix = "idb_";
 inline constexpr int kDefaultRelayPin = 10;
 inline constexpr int kDefaultDoorContactPin = 11;
 inline constexpr int kDefaultExitButtonPin = 12;
+// KY-016 discrete RGB (optional). Defaults kept for the external-module path.
 inline constexpr int kDefaultStatusLedRedPin = 4;
 inline constexpr int kDefaultStatusLedGreenPin = 5;
 inline constexpr int kDefaultStatusLedBluePin = 6;
+// ESP32-S3-DevKitC-1 onboard WS2812: GPIO38 on v1.1, GPIO48 on v1.0.
+inline constexpr int kDefaultStatusLedWs2812Pin = 38;
+inline constexpr int kDefaultStatusLedBrightness = 40;
+inline constexpr const char* kStatusLedDriverOnboardWs2812 = "onboard_ws2812";
+inline constexpr const char* kStatusLedDriverKy016 = "ky016";
 // Active buzzer (5 V via transistor). GPIO drives the base/gate only.
 inline constexpr int kDefaultBuzzerPin = 7;
 
@@ -67,9 +73,16 @@ struct RelayConfig {
   bool active_high = false;
 };
 
-// KY-016 RGB module (common cathode). R = stale/contingency, G = online, B = setup.
+// Status RGB. Default is the DevKitC-1 onboard WS2812 (one wire). Optional
+// KY-016 common-cathode module uses red/green/blue pins instead.
+// R = stale/contingency, G = online, B = setup (same pattern either driver).
 struct StatusLedConfig {
   bool enabled = true;
+  // "onboard_ws2812" (default) or "ky016".
+  std::string driver = kStatusLedDriverOnboardWs2812;
+  int ws2812_pin = kDefaultStatusLedWs2812Pin;
+  // 1..255 channel intensity for the WS2812 path.
+  int brightness = kDefaultStatusLedBrightness;
   int red_pin = kDefaultStatusLedRedPin;
   int green_pin = kDefaultStatusLedGreenPin;
   int blue_pin = kDefaultStatusLedBluePin;

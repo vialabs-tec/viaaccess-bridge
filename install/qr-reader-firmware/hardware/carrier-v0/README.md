@@ -5,6 +5,13 @@ spaghetti: field screw terminals + module headers + 5 V star.
 
 Spec: [`docs/carrier-v0.md`](../../docs/carrier-v0.md)
 
+**Enclosure:** keep LOCK / DOOR / REX / READER screw terminals **inside** the
+case. Field cables enter through **PG cable glands**; strain-relieve the jacket
+(gland + cable tie) before the block. See *Case cable entry and strain relief*
+in the spec — do not put live screw terminals on the outside of the case.
+Mechanical project: [`../case-v0/`](../case-v0/) (FreeCAD workflow + OpenSCAD
+skeleton).
+
 | File | Role |
 |---|---|
 | `carrier-v0.kicad_pro` | KiCad 8+ project |
@@ -129,6 +136,7 @@ BOM + centroid: [`fab/`](fab/) (`bom-jlcpcb.csv`, `cpl-jlcpcb.csv`, steps in `fa
 
 ## Out of scope
 
-On-board ESP32-S3 RF, PoE, enclosure STEP. AliExpress “DevKitC” clones with a
-different pin order are **not** supported on this socket — use Espressif
-DevKitC-1 (or a verified pin-compatible board).
+On-board ESP32-S3 RF, PoE. Enclosure lives in [`../case-v0/`](../case-v0/), not
+on this PCB. AliExpress “DevKitC” clones with a different pin order are **not**
+supported on this socket — use Espressif DevKitC-1 (or a verified pin-compatible
+board).

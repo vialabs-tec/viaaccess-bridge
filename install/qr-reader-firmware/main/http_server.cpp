@@ -232,6 +232,41 @@ bool ApplyHardwareOverrides(const cJSON* root, viaaccess::RuntimeConfig* cfg) {
     cfg->buzzer.active_high = flag;
     touched = true;
   }
+  if (JsonBool(root, "statusLedEnabled", &flag)) {
+    cfg->status_led.enabled = flag;
+    touched = true;
+  }
+  {
+    const cJSON* driver = cJSON_GetObjectItemCaseSensitive(root, "statusLedDriver");
+    if (cJSON_IsString(driver) && driver->valuestring != nullptr) {
+      cfg->status_led.driver = driver->valuestring;
+      touched = true;
+    }
+  }
+  if (JsonInt(root, "statusLedWs2812Pin", &number) && number > 0) {
+    cfg->status_led.ws2812_pin = number;
+    touched = true;
+  }
+  if (JsonInt(root, "statusLedBrightness", &number) && number > 0) {
+    cfg->status_led.brightness = number;
+    touched = true;
+  }
+  if (JsonInt(root, "statusLedRedPin", &number) && number > 0) {
+    cfg->status_led.red_pin = number;
+    touched = true;
+  }
+  if (JsonInt(root, "statusLedGreenPin", &number) && number > 0) {
+    cfg->status_led.green_pin = number;
+    touched = true;
+  }
+  if (JsonInt(root, "statusLedBluePin", &number) && number > 0) {
+    cfg->status_led.blue_pin = number;
+    touched = true;
+  }
+  if (JsonBool(root, "statusLedActiveHigh", &flag)) {
+    cfg->status_led.active_high = flag;
+    touched = true;
+  }
   return touched;
 }
 
@@ -242,9 +277,7 @@ void PreserveLocalHardware(viaaccess::RuntimeConfig* cfg,
                            const viaaccess::RuntimeConfig& existing,
                            bool hardware_from_request) {
   if (hardware_from_request) {
-    if (existing.status_led.enabled) {
-      cfg->status_led = existing.status_led;
-    }
+    // statusLed* now travels with the advanced wiring form; do not clobber it.
     return;
   }
   if (existing.relay.enabled || existing.door_contact.enabled ||
@@ -413,6 +446,14 @@ esp_err_t HandleSetupStatus(httpd_req_t* req) {
   cJSON_AddNumberToObject(hardware, "buzzerGpioPin", cfg.buzzer.gpio_pin);
   cJSON_AddBoolToObject(hardware, "buzzerActiveHigh", cfg.buzzer.active_high);
   cJSON_AddBoolToObject(hardware, "buzzerAvailable", buzzer::available());
+  cJSON_AddBoolToObject(hardware, "statusLedEnabled", cfg.status_led.enabled);
+  cJSON_AddStringToObject(hardware, "statusLedDriver", cfg.status_led.driver.c_str());
+  cJSON_AddNumberToObject(hardware, "statusLedWs2812Pin", cfg.status_led.ws2812_pin);
+  cJSON_AddNumberToObject(hardware, "statusLedBrightness", cfg.status_led.brightness);
+  cJSON_AddNumberToObject(hardware, "statusLedRedPin", cfg.status_led.red_pin);
+  cJSON_AddNumberToObject(hardware, "statusLedGreenPin", cfg.status_led.green_pin);
+  cJSON_AddNumberToObject(hardware, "statusLedBluePin", cfg.status_led.blue_pin);
+  cJSON_AddBoolToObject(hardware, "statusLedActiveHigh", cfg.status_led.active_high);
   cJSON_AddNumberToObject(hardware, "qrUartRxPin", cfg.qr_reader.rx_pin);
   cJSON_AddNumberToObject(hardware, "qrUartTxPin", cfg.qr_reader.tx_pin);
   cJSON_AddNumberToObject(hardware, "qrUartBaud", cfg.qr_reader.baud);

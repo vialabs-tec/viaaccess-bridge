@@ -293,11 +293,13 @@ void State::set_exit_button(bool enabled, bool simulated, bool ready, int gpio_p
   }
 }
 
-void State::set_status_led(bool enabled, bool ready, const std::string& pattern, bool red,
-                           bool green, bool blue, bool blink) {
+void State::set_status_led(bool enabled, bool ready, const std::string& module,
+                           const std::string& pattern, bool red, bool green, bool blue,
+                           bool blink) {
   std::lock_guard<std::mutex> lock(mutex_);
   led_enabled_ = enabled;
   led_ready_ = ready;
+  led_module_ = module;
   led_pattern_ = pattern;
   led_red_ = red;
   led_green_ = green;
@@ -424,7 +426,8 @@ std::string State::HealthJson() const {
   cJSON* status_led = cJSON_AddObjectToObject(root, "statusLed");
   cJSON_AddBoolToObject(status_led, "enabled", led_enabled_);
   if (led_enabled_) {
-    cJSON_AddStringToObject(status_led, "module", "KY-016");
+    cJSON_AddStringToObject(status_led, "module",
+                            led_module_.empty() ? "WS2812" : led_module_.c_str());
     cJSON_AddBoolToObject(status_led, "ready", led_ready_);
     cJSON_AddStringToObject(status_led, "pattern", led_pattern_.c_str());
     cJSON_AddBoolToObject(status_led, "red", led_red_);

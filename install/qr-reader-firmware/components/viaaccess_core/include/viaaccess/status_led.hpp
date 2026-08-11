@@ -1,4 +1,4 @@
-// KY-016 pattern selection from OperationMode.
+// Status RGB pattern selection from OperationMode (WS2812 or KY-016).
 //
 // Mirrors internal/statusled/pattern.go: ONLINE solid green, SYNC_STALE solid
 // red, SETUP blink blue, CONTINGENCY blink red. The GPIO driver lives in main;

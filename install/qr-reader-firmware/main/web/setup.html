@@ -124,6 +124,40 @@
               contínuo em held open (padrão 60&nbsp;s); também beep em autorizado/negado.
             </p>
           </fieldset>
+          <fieldset>
+            <legend>LED de status</legend>
+            <label class="check">
+              <input name="statusLedEnabled" type="checkbox" checked />
+              <span>Sinalização RGB (online / stale / setup)</span>
+            </label>
+            <label>Driver
+              <select name="statusLedDriver">
+                <option value="onboard_ws2812" selected>WS2812 do DevKit (padrão)</option>
+                <option value="ky016">KY-016 externo (R/G/B)</option>
+              </select>
+            </label>
+            <label>GPIO WS2812 (DevKitC-1 v1.1 = 38; v1.0 = 48)
+              <input name="statusLedWs2812Pin" type="number" value="38" min="1" />
+            </label>
+            <label>Brilho WS2812 (1–255)
+              <input name="statusLedBrightness" type="number" value="40" min="1" max="255" />
+            </label>
+            <label>KY-016 R / G / B
+              <span style="display:flex;gap:0.5rem">
+                <input name="statusLedRedPin" type="number" value="4" min="1" style="width:4rem" />
+                <input name="statusLedGreenPin" type="number" value="5" min="1" style="width:4rem" />
+                <input name="statusLedBluePin" type="number" value="6" min="1" style="width:4rem" />
+              </span>
+            </label>
+            <label class="check">
+              <input name="statusLedActiveHigh" type="checkbox" checked />
+              <span>KY-016 aciona em nível alto (cátodo comum)</span>
+            </label>
+            <p style="margin:0.5rem 0 0;font-size:0.75rem;color:#9aa7b5;line-height:1.4">
+              Padrão: LED RGB já soldado no DevKit — sem módulo extra. Use KY-016 só se
+              precisar do LED fora da placa (case / painel).
+            </p>
+          </fieldset>
     </template>
 
     <div id="panel-provision" class="panel active">
@@ -141,7 +175,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
-          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED R/G/B 4/5/6 · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
+          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
         </div>
         <details class="advanced" id="provision-advanced">
           <summary>Configuração avançada (GPIO / hostname LAN)</summary>
@@ -178,7 +212,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
-          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED R/G/B 4/5/6 · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
+          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)
         </div>
         <details class="advanced" id="manual-advanced">
           <summary>Configuração avançada (GPIO / hostname LAN)</summary>
@@ -229,10 +263,11 @@
     // device once: the status poll runs every 5 s and must not fight typing.
     let hardwarePrefilled = false;
     const numberFields = ['relayGpioPin', 'relayPulseMs', 'doorContactGpioPin',
-      'exitButtonGpioPin', 'buzzerGpioPin'];
+      'exitButtonGpioPin', 'buzzerGpioPin', 'statusLedWs2812Pin', 'statusLedBrightness',
+      'statusLedRedPin', 'statusLedGreenPin', 'statusLedBluePin'];
     const flagFields = ['relayEnabled', 'relayActiveHigh', 'doorContactEnabled',
       'doorContactSimulated', 'exitButtonEnabled', 'exitButtonSimulated',
-      'buzzerEnabled', 'buzzerActiveHigh'];
+      'buzzerEnabled', 'buzzerActiveHigh', 'statusLedEnabled', 'statusLedActiveHigh'];
 
     function prefillHardware(hardware) {
       if (hardwarePrefilled || !hardware) return;
@@ -249,6 +284,11 @@
           el.checked = hardware[name];
         });
       });
+      if (typeof hardware.statusLedDriver === 'string') {
+        document.querySelectorAll('[name="statusLedDriver"]').forEach((el) => {
+          el.value = hardware.statusLedDriver;
+        });
+      }
     }
 
     async function refreshStatus() {
@@ -326,6 +366,14 @@
         buzzerEnabled: fd.get('buzzerEnabled') === 'on',
         buzzerGpioPin: Number(fd.get('buzzerGpioPin') || 7),
         buzzerActiveHigh: fd.get('buzzerActiveHigh') === 'on',
+        statusLedEnabled: fd.get('statusLedEnabled') === 'on',
+        statusLedDriver: String(fd.get('statusLedDriver') || 'onboard_ws2812'),
+        statusLedWs2812Pin: Number(fd.get('statusLedWs2812Pin') || 38),
+        statusLedBrightness: Number(fd.get('statusLedBrightness') || 40),
+        statusLedRedPin: Number(fd.get('statusLedRedPin') || 4),
+        statusLedGreenPin: Number(fd.get('statusLedGreenPin') || 5),
+        statusLedBluePin: Number(fd.get('statusLedBluePin') || 6),
+        statusLedActiveHigh: fd.get('statusLedActiveHigh') === 'on',
         ...(mdnsHostname ? { mdnsHostname } : {}),
       };
     }

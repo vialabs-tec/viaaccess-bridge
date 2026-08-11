@@ -76,6 +76,19 @@ RuntimeConfig Normalize(RuntimeConfig cfg) {
     cfg.relay.gpio_pin = kDefaultRelayPin;
   }
 
+  if (cfg.status_led.driver.empty() ||
+      (cfg.status_led.driver != kStatusLedDriverKy016 &&
+       cfg.status_led.driver != kStatusLedDriverOnboardWs2812)) {
+    cfg.status_led.driver = kStatusLedDriverOnboardWs2812;
+  }
+  if (cfg.status_led.ws2812_pin <= 0) {
+    cfg.status_led.ws2812_pin = kDefaultStatusLedWs2812Pin;
+  }
+  if (cfg.status_led.brightness <= 0) {
+    cfg.status_led.brightness = kDefaultStatusLedBrightness;
+  } else if (cfg.status_led.brightness > 255) {
+    cfg.status_led.brightness = 255;
+  }
   if (cfg.status_led.red_pin <= 0 && cfg.status_led.yellow_pin > 0) {
     cfg.status_led.red_pin = cfg.status_led.yellow_pin;
   }

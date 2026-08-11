@@ -1,0 +1,9 @@
+# Local CAD binaries / exports — regenerate from case-v0.scad + KiCad STEP
+*.FCStd
+*.FCStd1
+*.step
+*.stp
+*.stl
+*.3mf
+.DS_Store
+imports/

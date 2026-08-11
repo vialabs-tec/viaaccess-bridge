@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "led_strip.h"
 #include "viaaccess/status_led.hpp"
 
 namespace status_led {
@@ -24,16 +25,38 @@ viaaccess::LedPattern g_pattern;
 std::atomic<bool> g_started{false};
 bool g_ready = false;
 bool g_blink_on = true;
-bool g_pins_claimed = false;
+bool g_gpio_claimed = false;
+led_strip_handle_t g_strip = nullptr;
 char g_pattern_name[24] = "UNKNOWN";
+
+bool IsKy016(const viaaccess::StatusLedConfig& cfg) {
+  return cfg.driver == viaaccess::kStatusLedDriverKy016;
+}
+
+const char* ModuleNameLocked() {
+  return IsKy016(g_config) ? "KY-016" : "WS2812";
+}
 
 int IdleLevel() { return g_config.active_high ? 0 : 1; }
 int ActiveLevel() { return g_config.active_high ? 1 : 0; }
-
 int Level(bool on) { return on ? ActiveLevel() : IdleLevel(); }
 
-void ReleasePinsLocked() {
-  if (!g_pins_claimed) {
+uint8_t Channel(bool on) {
+  if (!on) {
+    return 0;
+  }
+  int b = g_config.brightness;
+  if (b < 1) {
+    b = 1;
+  }
+  if (b > 255) {
+    b = 255;
+  }
+  return static_cast<uint8_t>(b);
+}
+
+void ReleaseGpioLocked() {
+  if (!g_gpio_claimed) {
     return;
   }
   gpio_set_level(static_cast<gpio_num_t>(g_config.red_pin), IdleLevel());
@@ -42,7 +65,21 @@ void ReleasePinsLocked() {
   gpio_reset_pin(static_cast<gpio_num_t>(g_config.red_pin));
   gpio_reset_pin(static_cast<gpio_num_t>(g_config.green_pin));
   gpio_reset_pin(static_cast<gpio_num_t>(g_config.blue_pin));
-  g_pins_claimed = false;
+  g_gpio_claimed = false;
+}
+
+void ReleaseStripLocked() {
+  if (g_strip == nullptr) {
+    return;
+  }
+  led_strip_clear(g_strip);
+  led_strip_del(g_strip);
+  g_strip = nullptr;
+}
+
+void ReleaseAllLocked() {
+  ReleaseGpioLocked();
+  ReleaseStripLocked();
 }
 
 esp_err_t ClaimPin(int pin) {
@@ -68,18 +105,29 @@ esp_err_t ClaimPin(int pin) {
 }
 
 void DriveLocked(bool red, bool green, bool blue) {
-  if (!g_ready || !g_pins_claimed) {
+  if (!g_ready) {
     return;
   }
-  gpio_set_level(static_cast<gpio_num_t>(g_config.red_pin), Level(red));
-  gpio_set_level(static_cast<gpio_num_t>(g_config.green_pin), Level(green));
-  gpio_set_level(static_cast<gpio_num_t>(g_config.blue_pin), Level(blue));
+  if (IsKy016(g_config)) {
+    if (!g_gpio_claimed) {
+      return;
+    }
+    gpio_set_level(static_cast<gpio_num_t>(g_config.red_pin), Level(red));
+    gpio_set_level(static_cast<gpio_num_t>(g_config.green_pin), Level(green));
+    gpio_set_level(static_cast<gpio_num_t>(g_config.blue_pin), Level(blue));
+    return;
+  }
+  if (g_strip == nullptr) {
+    return;
+  }
+  led_strip_set_pixel(g_strip, 0, Channel(red), Channel(green), Channel(blue));
+  led_strip_refresh(g_strip);
 }
 
 void PublishHealthLocked() {
   app::State::Instance().set_status_led(
-      g_config.enabled, g_ready, g_pattern_name, g_pattern.red, g_pattern.green,
-      g_pattern.blue, g_pattern.blink);
+      g_config.enabled, g_ready, ModuleNameLocked(), g_pattern_name, g_pattern.red,
+      g_pattern.green, g_pattern.blue, g_pattern.blink);
 }
 
 void ApplyPatternLocked(const viaaccess::LedPattern& next) {
@@ -91,14 +139,66 @@ void ApplyPatternLocked(const viaaccess::LedPattern& next) {
   g_pattern_name[sizeof(g_pattern_name) - 1] = '\0';
   g_blink_on = true;
   if (changed) {
-    ESP_LOGI(kTag, "pattern %s", g_pattern_name);
+    ESP_LOGI(kTag, "pattern %s (%s)", g_pattern_name, ModuleNameLocked());
   }
   DriveLocked(next.red, next.green, next.blue);
   PublishHealthLocked();
 }
 
+esp_err_t ConfigureKy016Locked(const viaaccess::StatusLedConfig& cfg) {
+  esp_err_t err = ClaimPin(cfg.red_pin);
+  if (err != ESP_OK) {
+    return err;
+  }
+  err = ClaimPin(cfg.green_pin);
+  if (err != ESP_OK) {
+    gpio_reset_pin(static_cast<gpio_num_t>(cfg.red_pin));
+    return err;
+  }
+  err = ClaimPin(cfg.blue_pin);
+  if (err != ESP_OK) {
+    gpio_reset_pin(static_cast<gpio_num_t>(cfg.red_pin));
+    gpio_reset_pin(static_cast<gpio_num_t>(cfg.green_pin));
+    return err;
+  }
+  g_gpio_claimed = true;
+  g_ready = true;
+  ESP_LOGI(kTag, "KY-016 ready on R=%d G=%d B=%d (activeHigh=%d)", cfg.red_pin,
+           cfg.green_pin, cfg.blue_pin, static_cast<int>(cfg.active_high));
+  return ESP_OK;
+}
+
+esp_err_t ConfigureWs2812Locked(const viaaccess::StatusLedConfig& cfg) {
+  if (cfg.ws2812_pin < 0 || !GPIO_IS_VALID_OUTPUT_GPIO(cfg.ws2812_pin)) {
+    ESP_LOGE(kTag, "WS2812 GPIO %d invalid on this target", cfg.ws2812_pin);
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  led_strip_config_t strip_config = {};
+  strip_config.strip_gpio_num = cfg.ws2812_pin;
+  strip_config.max_leds = 1;
+  strip_config.led_pixel_format = LED_PIXEL_FORMAT_GRB;
+  strip_config.led_model = LED_MODEL_WS2812;
+
+  led_strip_rmt_config_t rmt_config = {};
+  rmt_config.clk_src = RMT_CLK_SRC_DEFAULT;
+  rmt_config.resolution_hz = 10 * 1000 * 1000;
+
+  const esp_err_t err = led_strip_new_rmt_device(&strip_config, &rmt_config, &g_strip);
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "led_strip_new_rmt_device failed on GPIO %d: %s", cfg.ws2812_pin,
+             esp_err_to_name(err));
+    g_strip = nullptr;
+    return err;
+  }
+  led_strip_clear(g_strip);
+  g_ready = true;
+  ESP_LOGI(kTag, "WS2812 ready on GPIO %d (brightness=%d)", cfg.ws2812_pin, cfg.brightness);
+  return ESP_OK;
+}
+
 esp_err_t ConfigureLocked(const viaaccess::StatusLedConfig& cfg) {
-  ReleasePinsLocked();
+  ReleaseAllLocked();
   g_ready = false;
   g_config = cfg;
   g_pattern = {};
@@ -111,30 +211,14 @@ esp_err_t ConfigureLocked(const viaaccess::StatusLedConfig& cfg) {
     return ESP_OK;
   }
 
-  esp_err_t err = ClaimPin(cfg.red_pin);
+  const esp_err_t err =
+      IsKy016(cfg) ? ConfigureKy016Locked(cfg) : ConfigureWs2812Locked(cfg);
   if (err != ESP_OK) {
-    PublishHealthLocked();
-    return err;
+    ReleaseAllLocked();
+    g_ready = false;
   }
-  err = ClaimPin(cfg.green_pin);
-  if (err != ESP_OK) {
-    gpio_reset_pin(static_cast<gpio_num_t>(cfg.red_pin));
-    PublishHealthLocked();
-    return err;
-  }
-  err = ClaimPin(cfg.blue_pin);
-  if (err != ESP_OK) {
-    gpio_reset_pin(static_cast<gpio_num_t>(cfg.red_pin));
-    gpio_reset_pin(static_cast<gpio_num_t>(cfg.green_pin));
-    PublishHealthLocked();
-    return err;
-  }
-  g_pins_claimed = true;
-  g_ready = true;
-  ESP_LOGI(kTag, "KY-016 ready on R=%d G=%d B=%d (activeHigh=%d)", cfg.red_pin,
-           cfg.green_pin, cfg.blue_pin, static_cast<int>(cfg.active_high));
   PublishHealthLocked();
-  return ESP_OK;
+  return err;
 }
 
 void Loop(void* /*argument*/) {
@@ -166,6 +250,13 @@ void Loop(void* /*argument*/) {
   }
 }
 
+bool ConfigUnchanged(const viaaccess::StatusLedConfig& cfg) {
+  return cfg.enabled == g_config.enabled && cfg.driver == g_config.driver &&
+         cfg.ws2812_pin == g_config.ws2812_pin && cfg.brightness == g_config.brightness &&
+         cfg.red_pin == g_config.red_pin && cfg.green_pin == g_config.green_pin &&
+         cfg.blue_pin == g_config.blue_pin && cfg.active_high == g_config.active_high;
+}
+
 }  // namespace
 
 esp_err_t Start(const viaaccess::StatusLedConfig& cfg) {
@@ -180,7 +271,6 @@ esp_err_t Start(const viaaccess::StatusLedConfig& cfg) {
   if (g_started.compare_exchange_strong(expected, true)) {
     xTaskCreate(Loop, "va_led", 3072, nullptr, 2, nullptr);
   }
-  // Apply the first pattern immediately so SETUP blinks before the first tick.
   {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_ready) {
@@ -192,9 +282,7 @@ esp_err_t Start(const viaaccess::StatusLedConfig& cfg) {
 
 esp_err_t ApplyConfig(const viaaccess::StatusLedConfig& cfg) {
   std::lock_guard<std::mutex> lock(g_mutex);
-  if (cfg.enabled == g_config.enabled && cfg.red_pin == g_config.red_pin &&
-      cfg.green_pin == g_config.green_pin && cfg.blue_pin == g_config.blue_pin &&
-      cfg.active_high == g_config.active_high) {
+  if (ConfigUnchanged(cfg)) {
     return ESP_OK;
   }
   const esp_err_t err = ConfigureLocked(cfg);

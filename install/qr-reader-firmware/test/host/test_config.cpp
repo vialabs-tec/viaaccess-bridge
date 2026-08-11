@@ -46,6 +46,9 @@ VA_TEST(FactoryHardwareDefaultsForEsp32s3) {
   CHECK(cfg.exit_button.active_low);
   CHECK_EQ(cfg.exit_button.cooldown_ms, 3000);
   CHECK(cfg.status_led.enabled);
+  CHECK_EQ(cfg.status_led.driver, std::string("onboard_ws2812"));
+  CHECK_EQ(cfg.status_led.ws2812_pin, 38);
+  CHECK_EQ(cfg.status_led.brightness, 40);
   CHECK_EQ(cfg.status_led.red_pin, 4);
   CHECK_EQ(cfg.status_led.green_pin, 5);
   CHECK_EQ(cfg.status_led.blue_pin, 6);
@@ -62,15 +65,17 @@ VA_TEST(FactoryHardwareDefaultsForEsp32s3) {
 VA_TEST(FactoryPinsAvoidReservedEsp32s3Gpios) {
   const RuntimeConfig cfg = DefaultRuntimeConfig();
   const int pins[] = {
-      cfg.relay.gpio_pin,      cfg.door_contact.gpio_pin, cfg.exit_button.gpio_pin,
-      cfg.status_led.red_pin,  cfg.status_led.green_pin,  cfg.status_led.blue_pin,
-      cfg.buzzer.gpio_pin,     cfg.qr_reader.rx_pin,      cfg.qr_reader.tx_pin,
+      cfg.relay.gpio_pin,         cfg.door_contact.gpio_pin, cfg.exit_button.gpio_pin,
+      cfg.status_led.ws2812_pin,  cfg.status_led.red_pin,    cfg.status_led.green_pin,
+      cfg.status_led.blue_pin,    cfg.buzzer.gpio_pin,       cfg.qr_reader.rx_pin,
+      cfg.qr_reader.tx_pin,
   };
   for (const int pin : pins) {
     CHECK(pin > 0);
     CHECK(pin != 0 && pin != 3 && pin != 45 && pin != 46);
     CHECK(pin != 19 && pin != 20);
     CHECK(pin != 43 && pin != 44);
+    // Octal PSRAM claims 33-37; WS2812 on 38 (DevKit v1.1) is intentional.
     CHECK(pin < 26 || pin > 37);
   }
 }
@@ -97,6 +102,21 @@ VA_TEST(NormalizePromotesDeprecatedYellowPin) {
   cfg = Normalize(cfg);
   CHECK_EQ(cfg.status_led.red_pin, 21);
   CHECK_EQ(cfg.status_led.yellow_pin, 0);
+}
+
+VA_TEST(NormalizeStatusLedDriverDefaultsAndClampsBrightness) {
+  RuntimeConfig cfg = DefaultRuntimeConfig();
+  cfg.status_led.driver = "";
+  cfg.status_led.ws2812_pin = 0;
+  cfg.status_led.brightness = 900;
+  cfg = Normalize(cfg);
+  CHECK_EQ(cfg.status_led.driver, std::string("onboard_ws2812"));
+  CHECK_EQ(cfg.status_led.ws2812_pin, 38);
+  CHECK_EQ(cfg.status_led.brightness, 255);
+
+  cfg.status_led.driver = "ky016";
+  cfg = Normalize(cfg);
+  CHECK_EQ(cfg.status_led.driver, std::string("ky016"));
 }
 
 VA_TEST(ValidateOperationalAcceptsProvisionedConfig) {

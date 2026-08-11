@@ -35,6 +35,7 @@ idf_component_register(
     esp_wifi
     esp-tls
     json
+    led_strip
     nvs_flash
     nvs_sec_provider
 )

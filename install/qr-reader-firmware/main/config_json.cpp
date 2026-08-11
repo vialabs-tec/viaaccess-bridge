@@ -72,6 +72,9 @@ RuntimeConfig Parse(const std::string& json) {
   }
   if (const cJSON* led = Object(root, "statusLed")) {
     cfg.status_led.enabled = GetBool(led, "enabled", cfg.status_led.enabled);
+    cfg.status_led.driver = GetString(led, "driver", cfg.status_led.driver);
+    cfg.status_led.ws2812_pin = GetInt(led, "ws2812Pin", cfg.status_led.ws2812_pin);
+    cfg.status_led.brightness = GetInt(led, "brightness", cfg.status_led.brightness);
     cfg.status_led.red_pin = GetInt(led, "redPin", cfg.status_led.red_pin);
     cfg.status_led.green_pin = GetInt(led, "greenPin", cfg.status_led.green_pin);
     cfg.status_led.blue_pin = GetInt(led, "bluePin", cfg.status_led.blue_pin);
@@ -171,6 +174,9 @@ std::string Serialize(const RuntimeConfig& cfg, bool include_secrets) {
 
   cJSON* led = cJSON_AddObjectToObject(root, "statusLed");
   cJSON_AddBoolToObject(led, "enabled", cfg.status_led.enabled);
+  cJSON_AddStringToObject(led, "driver", cfg.status_led.driver.c_str());
+  cJSON_AddNumberToObject(led, "ws2812Pin", cfg.status_led.ws2812_pin);
+  cJSON_AddNumberToObject(led, "brightness", cfg.status_led.brightness);
   cJSON_AddNumberToObject(led, "redPin", cfg.status_led.red_pin);
   cJSON_AddNumberToObject(led, "greenPin", cfg.status_led.green_pin);
   cJSON_AddNumberToObject(led, "bluePin", cfg.status_led.blue_pin);
