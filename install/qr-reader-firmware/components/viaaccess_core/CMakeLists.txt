@@ -22,6 +22,7 @@ idf_component_register(
     "src/provision.cpp"
     "src/redeem.cpp"
     "src/scan.cpp"
+    "src/service_button.cpp"
     "src/status_led.cpp"
     "src/strings.cpp"
     "src/time.cpp"

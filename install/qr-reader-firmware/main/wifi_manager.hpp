@@ -32,9 +32,15 @@ esp_err_t ApplyCredentials(const std::string& ssid, const std::string& password)
 // Scan lists nearby networks for the portal, strongest first.
 std::vector<ScanEntry> Scan();
 
+// ForcePortal raises SoftAP immediately so a technician can join
+// viaaccess-qr-setup without waiting for station failures.
+esp_err_t ForcePortal();
+
 bool connected();
 
 // ip is the station address, empty while not connected.
 std::string ip();
+
+bool portal_active();
 
 }  // namespace wifi

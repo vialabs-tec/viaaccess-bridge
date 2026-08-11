@@ -114,7 +114,8 @@ struct DoorContactConfig {
 // without a QR and notifies Identity so the door-contact opened event that
 // follows is not treated as forced entry.
 struct ExitButtonConfig {
-  bool enabled = true;
+  // Off until enabled in Fiação: many pilot installs have no REX wired.
+  bool enabled = false;
   int gpio_pin = kDefaultExitButtonPin;
   bool active_low = true;
   int debounce_ms = kDefaultExitDebounceMs;

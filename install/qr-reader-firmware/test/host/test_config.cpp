@@ -41,10 +41,11 @@ VA_TEST(FactoryHardwareDefaultsForEsp32s3) {
   CHECK(cfg.door_contact.enabled);
   CHECK_EQ(cfg.door_contact.gpio_pin, 11);
   CHECK(cfg.door_contact.active_low);
-  CHECK(cfg.exit_button.enabled);
+  CHECK(!cfg.exit_button.enabled);
   CHECK_EQ(cfg.exit_button.gpio_pin, 12);
   CHECK(cfg.exit_button.active_low);
   CHECK_EQ(cfg.exit_button.cooldown_ms, 3000);
+  CHECK(!cfg.exit_button.simulated);
   CHECK(cfg.status_led.enabled);
   CHECK_EQ(cfg.status_led.driver, std::string("onboard_ws2812"));
   CHECK_EQ(cfg.status_led.ws2812_pin, 38);

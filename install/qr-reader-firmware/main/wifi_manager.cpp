@@ -270,4 +270,26 @@ std::string ip() {
   return g_ip;
 }
 
+bool portal_active() {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_ap_active;
+}
+
+esp_err_t ForcePortal() {
+  const esp_err_t err = SetApMode(true);
+  if (err != ESP_OK) {
+    return err;
+  }
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    // Treat as provisioning so /health and the LED show SETUP / portal up even
+    // if the station is still associated on the side.
+    g_failures = kFailuresBeforePortal;
+    PublishPhase(app::WifiPhase::kProvisioning);
+  }
+  ESP_LOGW(kTag, "SoftAP forced: join %s and open http://192.168.4.1:3710/setup",
+           kSetupApSsid);
+  return ESP_OK;
+}
+
 }  // namespace wifi

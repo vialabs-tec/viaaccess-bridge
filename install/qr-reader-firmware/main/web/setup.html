@@ -92,7 +92,7 @@
           <fieldset>
             <legend>Botão de saída (REX)</legend>
             <label class="check">
-              <input name="exitButtonEnabled" type="checkbox" checked />
+              <input name="exitButtonEnabled" type="checkbox" />
               <span>Botão interno abre a porta sem QR (mesmo relé)</span>
             </label>
             <label>GPIO pin
@@ -100,8 +100,13 @@
             </label>
             <label class="check">
               <input name="exitButtonSimulated" type="checkbox" />
-              <span>Simular (sem hardware, para homologação)</span>
+              <span>Simular (sem hardware). Também libera 2 cliques no BOOT do
+                DevKit para REX sintético.</span>
             </label>
+            <p style="margin:0.5rem 0 0;font-size:0.75rem;color:#9aa7b5;line-height:1.4">
+              Desligado por padrão. Ative só se houver botão de saída na porta, ou
+              Simular na bancada.
+            </p>
           </fieldset>
           <fieldset>
             <legend>Buzzer</legend>
@@ -178,7 +183,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
-          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
+          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 (opcional, desligado) · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
           Para alterar GPIO, LED ou buzzer, use a aba <strong>Fiação</strong> depois.
         </div>
         <button type="submit">Provisionar</button>
@@ -207,7 +212,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
-          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
+          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 (opcional, desligado) · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
           Para alterar GPIO, LED ou buzzer, use a aba <strong>Fiação</strong>.
         </div>
         <label class="check">
@@ -229,7 +234,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3</strong><br />
-          Relé GPIO 10 · Porta GPIO 11 · REX GPIO 12 · Buzzer GPIO 7 · LED WS2812 GPIO 38 · UART RX 17 / TX 18 · RTC SDA 8 / SCL 9
+          Relé GPIO 10 · Porta GPIO 11 · REX GPIO 12 (opcional) · Buzzer GPIO 7 · LED WS2812 GPIO 38 · UART RX 17 / TX 18 · RTC SDA 8 / SCL 9
         </div>
         <label>Hostname .local (opcional)
           <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />

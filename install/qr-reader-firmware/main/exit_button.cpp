@@ -221,6 +221,17 @@ esp_err_t SetSimPressed(bool pressed) {
   return ESP_OK;
 }
 
+esp_err_t TriggerPress() {
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_config.enabled || !g_ready) {
+      return ESP_ERR_INVALID_STATE;
+    }
+  }
+  HandlePress();
+  return ESP_OK;
+}
+
 bool enabled() {
   std::lock_guard<std::mutex> lock(g_mutex);
   return g_config.enabled;

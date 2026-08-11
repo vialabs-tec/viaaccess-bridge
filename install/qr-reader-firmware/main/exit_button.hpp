@@ -17,6 +17,10 @@ esp_err_t ApplyConfig(const viaaccess::ExitButtonConfig& cfg);
 // only flips the virtual button; the watcher posts and pulses after debounce.
 esp_err_t SetSimPressed(bool pressed);
 
+// TriggerPress runs the same unlock + Identity notify path as a real REX edge
+// (used by the DevKit BOOT triple-click). Honours enabled; skips GPIO.
+esp_err_t TriggerPress();
+
 bool enabled();
 bool simulated();
 bool ready();

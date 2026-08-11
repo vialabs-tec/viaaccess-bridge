@@ -15,7 +15,6 @@
 #include "door_contact.hpp"
 #include "esp_err.h"
 #include "exit_button.hpp"
-#include "status_led.hpp"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "http_server.hpp"
@@ -23,6 +22,9 @@
 #include "nvs_flash.h"
 #include "qr_reader.hpp"
 #include "relay.hpp"
+#include "scan_service.hpp"
+#include "service_button.hpp"
+#include "status_led.hpp"
 #include "storage.hpp"
 #include "sync_task.hpp"
 #include "viaaccess/config.hpp"
@@ -120,6 +122,7 @@ extern "C" void app_main() {
   ESP_ERROR_CHECK_WITHOUT_ABORT(exit_button::Start(boot.exit_button));
   ESP_ERROR_CHECK_WITHOUT_ABORT(status_led::Start(boot.status_led));
   ESP_ERROR_CHECK_WITHOUT_ABORT(buzzer::Start(boot.buzzer));
+  ESP_ERROR_CHECK_WITHOUT_ABORT(service_button::Start());
 
   state.set_on_config_applied([](const viaaccess::RuntimeConfig& cfg) {
     // Setup and Identity device-config can both move pins, pulse width, the

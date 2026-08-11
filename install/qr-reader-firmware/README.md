@@ -43,7 +43,7 @@ The map below also avoids the strapping pins (0, 3, 45, 46), the native USB pair
 |---|---|---|
 | Relay | 10 | low-level trigger, **15000 ms** pulse by default (matches Identity app countdown). Appliances that already saved NVS keep the old value until `/setup` is saved again. |
 | Door contact (reed) | 11 | active low, closed door pulls LOW |
-| Exit button (REX) | 12 | active low |
+| Exit button (REX) | 12 | active low; **disabled by default** until enabled in Fiação |
 | Status LED | GPIO 38 (WS2812 onboard) | KY-016 on 4/5/6 optional |
 | Buzzer | 7 | 3-pin module, low-level trigger on I/O |
 | Reader UART RX | 17 | to the module TX, 9600 8N1 |
@@ -223,6 +223,24 @@ curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/exit-button/sim \
   -H 'Content-Type: application/json' -d '{"state":"idle"}'
 ```
 
+### DevKit BOOT button (GPIO 0)
+
+The ESP32-S3-DevKitC-1 **BOOT** button is sampled after app start (strapping is
+not touched during reset). Gestures are exclusive in time:
+
+| Gesture | Action |
+|---|---|
+| 1 click | Announce posture: success beep = `ONLINE`, fail beeps = setup / contingency / stale |
+| 2 clicks | Synthetic REX — only when **Fiação** has REX enabled **and** Simular checked |
+| 3 clicks | Force SoftAP `viaaccess-qr-setup` immediately (join and open `http://192.168.4.1:3710/setup` or `/wifi`) without clearing the device key |
+| Hold 2 s | Warning cue (keep holding) |
+| Hold 5 s | Factory reset: clear Identity credentials **and** Wi-Fi, then reboot into SoftAP |
+
+REX (GPIO 12 and BOOT) is **off by default**. Enable it under `/setup` → **Fiação**
+when a physical exit button is wired; turn on Simular for bench / BOOT 2-click unlock.
+Do not use BOOT as the production exit button; field REX stays on GPIO 12. The
+RST button only resets the chip and is not read by firmware.
+
 ### Status LED (onboard WS2812 by default)
 
 The ESP32-S3-DevKitC-1 already has an addressable RGB LED. The appliance uses it
@@ -332,6 +350,7 @@ main/                       ESP-IDF application
   relay.cpp                 lock output
   door_contact.cpp          MC38 reed (GPIO or simulated)
   exit_button.cpp           REX button (GPIO or simulated)
+  service_button.cpp        DevKit BOOT multi-gesture (status / SoftAP / REX / factory)
   status_led.cpp            Status RGB (WS2812 onboard or KY-016)
   buzzer.cpp                active buzzer feedback (GPIO 7)
   web/                      embedded setup and Wi-Fi pages
@@ -435,7 +454,8 @@ counterpart because the Pi gets its date from the distribution.
    (`viaaccess-qr-{slug}.local`).
 
 If the network is wrong or the password changed, five failed association attempts
-bring the SoftAP back so no serial cable is needed.
+bring the SoftAP back so no serial cable is needed. Three clicks on the DevKit
+**BOOT** button force that portal immediately (see above).
 
 ### What the setup form asks for
 

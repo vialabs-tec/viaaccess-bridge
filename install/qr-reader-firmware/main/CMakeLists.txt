@@ -17,6 +17,7 @@ idf_component_register(
     "qr_reader.cpp"
     "relay.cpp"
     "scan_service.cpp"
+    "service_button.cpp"
     "storage.cpp"
     "sync_task.cpp"
     "wifi_manager.cpp"

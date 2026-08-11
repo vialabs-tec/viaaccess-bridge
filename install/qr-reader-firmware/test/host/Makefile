@@ -29,6 +29,7 @@ SOURCES := \
 	test_provision.cpp \
 	test_redeem.cpp \
 	test_scan.cpp \
+	test_service_button.cpp \
 	test_status_led.cpp \
 	test_time.cpp \
 	$(wildcard $(CORE_DIR)/src/*.cpp)
