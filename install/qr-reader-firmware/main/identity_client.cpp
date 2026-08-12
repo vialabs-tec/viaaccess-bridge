@@ -105,6 +105,10 @@ void SetBridgeHeaders(esp_http_client_handle_t client,
                 cfg.relay.pulse_ms > 0 ? cfg.relay.pulse_ms
                                        : viaaccess::kDefaultRelayPulseMs);
   esp_http_client_set_header(client, "X-ViaAccess-Relay-Pulse-Ms", pulse_ms);
+  {
+    const std::string mode = viaaccess::NormalizeRelayUnlockMode(cfg.relay.unlock_mode);
+    esp_http_client_set_header(client, "X-ViaAccess-Relay-Unlock-Mode", mode.c_str());
+  }
   esp_http_client_set_header(client, "X-ViaAccess-Door-Contact-Enabled",
                             cfg.door_contact.enabled ? "true" : "false");
   esp_http_client_set_header(client, "X-ViaAccess-Exit-Button-Enabled",
