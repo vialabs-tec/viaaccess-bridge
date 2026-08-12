@@ -9,6 +9,7 @@
 #include "buzzer.hpp"
 #include "cJSON.h"
 #include "esp_http_server.h"
+#include "esp_https_server.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "identity_client.hpp"
@@ -29,17 +30,25 @@ extern const uint8_t setup_html_start[] asm("_binary_setup_html_start");
 extern const uint8_t setup_html_end[] asm("_binary_setup_html_end");
 extern const uint8_t wifi_html_start[] asm("_binary_wifi_html_start");
 extern const uint8_t wifi_html_end[] asm("_binary_wifi_html_end");
+extern const uint8_t servercert_pem_start[] asm("_binary_servercert_pem_start");
+extern const uint8_t servercert_pem_end[] asm("_binary_servercert_pem_end");
+extern const uint8_t prvtkey_pem_start[] asm("_binary_prvtkey_pem_start");
+extern const uint8_t prvtkey_pem_end[] asm("_binary_prvtkey_pem_end");
 
 namespace http_server {
 namespace {
 
 constexpr const char* kTag = "http";
+// SoftAP phones need cleartext HTTP; self-signed HTTPS on SoftAP is blocked by
+// many mobile browsers. HTTPS stays available on 443 for LAN / curl -k.
+constexpr int kHttpsPort = 443;
 
 // A QR URL is a few hundred bytes and the setup form a couple of kilobytes;
 // anything larger is a client mistake and must not be buffered on the heap.
 constexpr size_t kMaxBodyBytes = 8192;
 
-httpd_handle_t g_server = nullptr;
+httpd_handle_t g_http_server = nullptr;
+httpd_handle_t g_https_server = nullptr;
 int g_port = viaaccess::kDefaultHttpPort;
 int g_pending_port = 0;
 esp_timer_handle_t g_restart_timer = nullptr;
@@ -164,12 +173,77 @@ bool JsonInt(const cJSON* root, const char* key, int* value) {
   return true;
 }
 
-bool Authorized(const cJSON* root) {
-  const std::string expected = viaaccess::Trim(app::State::Instance().config().setup_pin);
-  if (expected.empty()) {
-    return true;
+bool IsValidSetupPinFormat(const std::string& pin) {
+  if (pin.size() < 4 || pin.size() > 8) {
+    return false;
   }
-  return JsonString(root, "pin") == expected;
+  for (const char ch : pin) {
+    if (ch < '0' || ch > '9') {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Local setup writes after provision require the setup PIN. Unprovisioned
+// appliances stay open for first Wi‑Fi + claim. Legacy units that are already
+// configured without a PIN may establish one via body.setupPin.
+struct SetupWriteAuth {
+  bool ok = false;
+  std::string error;
+  /** Non-empty when the request establishes a new PIN (legacy / first set). */
+  std::string establish_pin;
+};
+
+SetupWriteAuth AuthorizeSetupWrite(const cJSON* root) {
+  SetupWriteAuth auth;
+  const viaaccess::RuntimeConfig& cfg = app::State::Instance().config();
+  const std::string expected = viaaccess::Trim(cfg.setup_pin);
+  const std::string pin = JsonString(root, "pin");
+  const std::string setup_pin = viaaccess::Trim(JsonString(root, "setupPin"));
+
+  if (!cfg.configured) {
+    auth.ok = true;
+    return auth;
+  }
+
+  if (!expected.empty()) {
+    if (pin == expected) {
+      auth.ok = true;
+      return auth;
+    }
+    auth.error = "PIN inválido.";
+    return auth;
+  }
+
+  // Provisioned but no PIN yet: require establishing one on this write.
+  if (!IsValidSetupPinFormat(setup_pin)) {
+    auth.error = "Defina um PIN de setup numérico (4 a 8 dígitos) em setupPin.";
+    return auth;
+  }
+  auth.ok = true;
+  auth.establish_pin = setup_pin;
+  return auth;
+}
+
+void ApplyEstablishedPin(viaaccess::RuntimeConfig* cfg, const SetupWriteAuth& auth) {
+  if (cfg != nullptr && !auth.establish_pin.empty()) {
+    cfg->setup_pin = auth.establish_pin;
+  }
+}
+
+// After provision, mutating /api/setup* need SoftAP portal + Host 192.168.4.1.
+// Returns true and sends 403 when the channel is blocked.
+bool RejectIfSetupWritesBlocked(httpd_req_t* req) {
+  const bool configured = app::State::Instance().config().configured;
+  const std::string host = HeaderValue(req, "Host");
+  if (wifi::local_setup_writes_allowed(configured, host)) {
+    return false;
+  }
+  SendError(req, 403,
+            "Alterações locais só via SoftAP. Três cliques no BOOT, conecte em "
+            "viaaccess-qr-setup e abra http://192.168.4.1:3710/setup (não use .local).");
+  return true;
 }
 
 // ApplyHardwareOverrides mirrors applyDoorContactFromRequest and its siblings:
@@ -329,6 +403,10 @@ esp_err_t FinishLocalSave(httpd_req_t* req, viaaccess::RuntimeConfig cfg,
                           const std::string& message_prefix) {
   cfg = viaaccess::Normalize(std::move(cfg));
 
+  if (cfg.configured && viaaccess::Trim(cfg.setup_pin).empty()) {
+    return SendError(req, 400, "PIN de setup obrigatório após o provisionamento.");
+  }
+
   const std::string invalid = viaaccess::ValidateOperational(cfg);
   if (!invalid.empty()) {
     return SendError(req, 400, invalid);
@@ -422,6 +500,10 @@ esp_err_t HandleSetupStatus(httpd_req_t* req) {
   cJSON* root = cJSON_CreateObject();
   cJSON_AddBoolToObject(root, "setupRequired", !cfg.configured);
   cJSON_AddBoolToObject(root, "pinRequired", !viaaccess::Trim(cfg.setup_pin).empty());
+  // Legacy / misconfigured units that are online without a PIN must set one
+  // before any further local mutation.
+  cJSON_AddBoolToObject(root, "pinSetupRequired",
+                        cfg.configured && viaaccess::Trim(cfg.setup_pin).empty());
   cJSON_AddStringToObject(root, "agentVersion", viaaccess::kFirmwareVersion);
   cJSON_AddStringToObject(root, "identityUrl", cfg.identity_url.c_str());
   cJSON_AddStringToObject(root, "accessPointSlug", cfg.access_point_slug.c_str());
@@ -436,6 +518,12 @@ esp_err_t HandleSetupStatus(httpd_req_t* req) {
   cJSON_AddBoolToObject(network, "connected", wifi::connected());
   cJSON_AddStringToObject(network, "ssid", cfg.wifi.ssid.c_str());
   cJSON_AddStringToObject(network, "ip", wifi::ip().c_str());
+  cJSON_AddBoolToObject(network, "portalActive", wifi::portal_active());
+  const std::string host = HeaderValue(req, "Host");
+  const bool via_softap = wifi::host_is_softap(host);
+  const bool writes_allowed = wifi::local_setup_writes_allowed(cfg.configured, host);
+  cJSON_AddBoolToObject(network, "viaSoftAp", via_softap);
+  cJSON_AddBoolToObject(root, "setupWritesAllowed", writes_allowed);
 
   cJSON* hardware = cJSON_AddObjectToObject(root, "hardware");
   cJSON_AddBoolToObject(hardware, "relayEnabled", cfg.relay.enabled);
@@ -485,6 +573,9 @@ esp_err_t HandleSetupStatus(httpd_req_t* req) {
 }
 
 esp_err_t HandleSetupSave(httpd_req_t* req) {
+  if (RejectIfSetupWritesBlocked(req)) {
+    return ESP_OK;
+  }
   std::string body;
   if (!ReadBody(req, &body)) {
     return SendError(req, 400, "Corpo inválido.");
@@ -494,9 +585,11 @@ esp_err_t HandleSetupSave(httpd_req_t* req) {
     cJSON_Delete(root);
     return SendError(req, 400, "JSON inválido.");
   }
-  if (!Authorized(root)) {
+  const SetupWriteAuth auth = AuthorizeSetupWrite(root);
+  if (!auth.ok) {
+    const int status = auth.error.find("PIN inválido") != std::string::npos ? 401 : 400;
     cJSON_Delete(root);
-    return SendError(req, 401, "PIN inválido.");
+    return SendError(req, status, auth.error);
   }
 
   const viaaccess::RuntimeConfig existing = app::State::Instance().config();
@@ -508,6 +601,16 @@ esp_err_t HandleSetupSave(httpd_req_t* req) {
   // Manual setup has no claim, so a reused device key keeps its device id.
   cfg.device_id = existing.device_id;
   cfg.provisioned_at = existing.provisioned_at;
+  ApplyEstablishedPin(&cfg, auth);
+  if (viaaccess::Trim(cfg.setup_pin).empty()) {
+    const std::string new_pin = viaaccess::Trim(JsonString(root, "setupPin"));
+    if (!IsValidSetupPinFormat(new_pin)) {
+      cJSON_Delete(root);
+      return SendError(req, 400,
+                       "Informe um PIN de setup numérico (4 a 8 dígitos) em setupPin.");
+    }
+    cfg.setup_pin = new_pin;
+  }
 
   bool flag = false;
   if (JsonBool(root, "emitDetection", &flag)) {
@@ -526,6 +629,9 @@ esp_err_t HandleSetupSave(httpd_req_t* req) {
 // in the field means two people for one wire. Credentials, Identity URL, Wi-Fi and
 // the mDNS hostname are left exactly as they are.
 esp_err_t HandleSetupHardware(httpd_req_t* req) {
+  if (RejectIfSetupWritesBlocked(req)) {
+    return ESP_OK;
+  }
   std::string body;
   if (!ReadBody(req, &body)) {
     return SendError(req, 400, "Corpo inválido.");
@@ -535,9 +641,11 @@ esp_err_t HandleSetupHardware(httpd_req_t* req) {
     cJSON_Delete(root);
     return SendError(req, 400, "JSON inválido.");
   }
-  if (!Authorized(root)) {
+  const SetupWriteAuth auth = AuthorizeSetupWrite(root);
+  if (!auth.ok) {
+    const int status = auth.error.find("PIN inválido") != std::string::npos ? 401 : 400;
     cJSON_Delete(root);
-    return SendError(req, 401, "PIN inválido.");
+    return SendError(req, status, auth.error);
   }
 
   viaaccess::RuntimeConfig cfg = app::State::Instance().config();
@@ -546,7 +654,8 @@ esp_err_t HandleSetupHardware(httpd_req_t* req) {
     return SendError(req, 409,
                      "Leitor ainda não provisionado: informe a fiação junto do claim.");
   }
-  if (!ApplyHardwareOverrides(root, &cfg)) {
+  ApplyEstablishedPin(&cfg, auth);
+  if (!ApplyHardwareOverrides(root, &cfg) && auth.establish_pin.empty()) {
     cJSON_Delete(root);
     return SendError(req, 400, "Nenhum campo de fiação foi enviado.");
   }
@@ -556,6 +665,9 @@ esp_err_t HandleSetupHardware(httpd_req_t* req) {
 }
 
 esp_err_t HandleSetupProvision(httpd_req_t* req) {
+  if (RejectIfSetupWritesBlocked(req)) {
+    return ESP_OK;
+  }
   std::string body;
   if (!ReadBody(req, &body)) {
     return SendError(req, 400, "Corpo inválido.");
@@ -565,9 +677,11 @@ esp_err_t HandleSetupProvision(httpd_req_t* req) {
     cJSON_Delete(root);
     return SendError(req, 400, "JSON inválido.");
   }
-  if (!Authorized(root)) {
+  const SetupWriteAuth auth = AuthorizeSetupWrite(root);
+  if (!auth.ok) {
+    const int status = auth.error.find("PIN inválido") != std::string::npos ? 401 : 400;
     cJSON_Delete(root);
-    return SendError(req, 401, "PIN inválido.");
+    return SendError(req, status, auth.error);
   }
 
   const viaaccess::ProvisionInput input = viaaccess::ParseProvisionInput(
@@ -597,6 +711,21 @@ esp_err_t HandleSetupProvision(httpd_req_t* req) {
   cfg.debounce_ms = claimed.debounce_ms;
   cfg.unlock_on_authorized_only = claimed.unlock_on_authorized_only;
   cfg.contingency = claimed.contingency;
+  // Claim PIN wins over any previous local PIN (reprovision rotates setup PIN).
+  if (!viaaccess::Trim(claimed.setup_pin).empty()) {
+    cfg.setup_pin = viaaccess::Trim(claimed.setup_pin);
+  } else {
+    ApplyEstablishedPin(&cfg, auth);
+    if (viaaccess::Trim(cfg.setup_pin).empty()) {
+      const std::string new_pin = viaaccess::Trim(JsonString(root, "setupPin"));
+      if (!IsValidSetupPinFormat(new_pin)) {
+        cJSON_Delete(root);
+        return SendError(req, 400,
+                         "Identity não enviou setupPin; informe um PIN (4 a 8 dígitos).");
+      }
+      cfg.setup_pin = new_pin;
+    }
+  }
 
   const bool hardware_from_request = ApplyHardwareOverrides(root, &cfg);
   PreserveLocalHardware(&cfg, existing, hardware_from_request);
@@ -608,6 +737,9 @@ esp_err_t HandleSetupProvision(httpd_req_t* req) {
 }
 
 esp_err_t HandleWifiScan(httpd_req_t* req) {
+  if (RejectIfSetupWritesBlocked(req)) {
+    return ESP_OK;
+  }
   const std::vector<wifi::ScanEntry> networks = wifi::Scan();
   cJSON* root = cJSON_CreateObject();
   cJSON_AddBoolToObject(root, "ok", true);
@@ -623,6 +755,9 @@ esp_err_t HandleWifiScan(httpd_req_t* req) {
 }
 
 esp_err_t HandleWifiSave(httpd_req_t* req) {
+  if (RejectIfSetupWritesBlocked(req)) {
+    return ESP_OK;
+  }
   std::string body;
   if (!ReadBody(req, &body)) {
     return SendError(req, 400, "Corpo inválido.");
@@ -632,9 +767,11 @@ esp_err_t HandleWifiSave(httpd_req_t* req) {
     cJSON_Delete(root);
     return SendError(req, 400, "JSON inválido.");
   }
-  if (!Authorized(root)) {
+  const SetupWriteAuth auth = AuthorizeSetupWrite(root);
+  if (!auth.ok) {
+    const int status = auth.error.find("PIN inválido") != std::string::npos ? 401 : 400;
     cJSON_Delete(root);
-    return SendError(req, 401, "PIN inválido.");
+    return SendError(req, status, auth.error);
   }
 
   const std::string ssid = JsonString(root, "ssid");
@@ -643,9 +780,9 @@ esp_err_t HandleWifiSave(httpd_req_t* req) {
       cJSON_IsString(password_item) && password_item->valuestring != nullptr
           ? password_item->valuestring
           : "";
-  cJSON_Delete(root);
 
   if (ssid.empty()) {
+    cJSON_Delete(root);
     return SendError(req, 400, "Informe o nome da rede (ssid).");
   }
 
@@ -653,8 +790,10 @@ esp_err_t HandleWifiSave(httpd_req_t* req) {
   // must not lose what the technician typed, and NVS survives the reboot the
   // installer will probably try next.
   viaaccess::RuntimeConfig cfg = app::State::Instance().config();
+  ApplyEstablishedPin(&cfg, auth);
   cfg.wifi.ssid = ssid;
   cfg.wifi.password = password;
+  cJSON_Delete(root);
   const esp_err_t saved = app::State::Instance().SaveConfig(std::move(cfg));
   if (saved != ESP_OK) {
     return SendError(req, 500,
@@ -772,9 +911,75 @@ constexpr Route kRoutes[] = {
     {"/api/exit-button/sim", HTTP_POST, HandleExitButtonSim},
 };
 
+esp_err_t RegisterRoutes(httpd_handle_t server) {
+  for (const Route& route : kRoutes) {
+    const httpd_uri_t uri = {
+        .uri = route.uri,
+        .method = route.method,
+        .handler = route.handler,
+        .user_ctx = nullptr,
+    };
+    const esp_err_t err = httpd_register_uri_handler(server, &uri);
+    if (err != ESP_OK) {
+      ESP_LOGE(kTag, "cannot register %s: %s", route.uri, esp_err_to_name(err));
+      return err;
+    }
+  }
+  return ESP_OK;
+}
+
+void StopServers() {
+  if (g_https_server != nullptr) {
+    httpd_ssl_stop(g_https_server);
+    g_https_server = nullptr;
+  }
+  if (g_http_server != nullptr) {
+    httpd_stop(g_http_server);
+    g_http_server = nullptr;
+  }
+}
+
+esp_err_t StartHttpsServer() {
+  if (g_https_server != nullptr) {
+    return ESP_OK;
+  }
+  httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
+  conf.port_secure = static_cast<uint16_t>(kHttpsPort);
+  conf.transport_mode = HTTPD_SSL_TRANSPORT_SECURE;
+  conf.servercert = servercert_pem_start;
+  conf.servercert_len = servercert_pem_end - servercert_pem_start;
+  conf.prvtkey_pem = prvtkey_pem_start;
+  conf.prvtkey_len = prvtkey_pem_end - prvtkey_pem_start;
+  conf.httpd.max_uri_handlers = sizeof(kRoutes) / sizeof(kRoutes[0]) + 2;
+  conf.httpd.stack_size = 16384;
+  conf.httpd.recv_wait_timeout = 15;
+  conf.httpd.send_wait_timeout = 15;
+  conf.httpd.lru_purge_enable = true;
+  // Avoid colliding with the plain HTTP control port.
+  conf.httpd.ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 1;
+
+  esp_err_t err = httpd_ssl_start(&g_https_server, &conf);
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "HTTPS :%d unavailable: %s (SoftAP still uses HTTP :%d)", kHttpsPort,
+             esp_err_to_name(err), g_port);
+    g_https_server = nullptr;
+    return ESP_OK;
+  }
+  err = RegisterRoutes(g_https_server);
+  if (err != ESP_OK) {
+    httpd_ssl_stop(g_https_server);
+    g_https_server = nullptr;
+    return ESP_OK;
+  }
+  ESP_LOGI(kTag, "HTTPS listening on port %d (self-signed; SoftAP phones should use HTTP)",
+           kHttpsPort);
+  return ESP_OK;
+}
+
 esp_err_t StartOn(int port) {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = static_cast<uint16_t>(port);
+  config.ctrl_port = ESP_HTTPD_DEF_CTRL_PORT;
   config.max_uri_handlers = sizeof(kRoutes) / sizeof(kRoutes[0]) + 2;
   // Provision talks to Identity inside the handler (claim, then ping), so the
   // worker needs both a generous stack and a receive timeout above those calls.
@@ -783,27 +988,20 @@ esp_err_t StartOn(int port) {
   config.send_wait_timeout = 15;
   config.lru_purge_enable = true;
 
-  esp_err_t err = httpd_start(&g_server, &config);
+  esp_err_t err = httpd_start(&g_http_server, &config);
   if (err != ESP_OK) {
     ESP_LOGE(kTag, "httpd_start on port %d failed: %s", port, esp_err_to_name(err));
-    g_server = nullptr;
+    g_http_server = nullptr;
     return err;
   }
-  for (const Route& route : kRoutes) {
-    const httpd_uri_t uri = {
-        .uri = route.uri,
-        .method = route.method,
-        .handler = route.handler,
-        .user_ctx = nullptr,
-    };
-    err = httpd_register_uri_handler(g_server, &uri);
-    if (err != ESP_OK) {
-      ESP_LOGE(kTag, "cannot register %s: %s", route.uri, esp_err_to_name(err));
-      return err;
-    }
+  err = RegisterRoutes(g_http_server);
+  if (err != ESP_OK) {
+    StopServers();
+    return err;
   }
   g_port = port;
-  ESP_LOGI(kTag, "listening on port %d", port);
+  ESP_LOGI(kTag, "HTTP listening on port %d (SoftAP setup URL)", port);
+  StartHttpsServer();
   return ESP_OK;
 }
 
@@ -812,22 +1010,20 @@ void RestartOnPendingPort(void* /*argument*/) {
   if (port <= 0 || port == g_port) {
     return;
   }
-  if (g_server != nullptr) {
-    httpd_stop(g_server);
-    g_server = nullptr;
-  }
+  const int previous = g_port;
+  StopServers();
   if (StartOn(port) != ESP_OK) {
     // Falling back to the previous port keeps the appliance reachable instead of
     // leaving it with no local server at all.
-    ESP_LOGE(kTag, "port %d unavailable, restoring %d", port, g_port);
-    StartOn(g_port);
+    ESP_LOGE(kTag, "port %d unavailable, restoring %d", port, previous);
+    StartOn(previous);
   }
 }
 
 }  // namespace
 
 esp_err_t Start() {
-  if (g_server != nullptr) {
+  if (g_http_server != nullptr) {
     return ESP_OK;
   }
   return StartOn(app::State::Instance().config().http_port);

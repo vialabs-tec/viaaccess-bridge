@@ -24,6 +24,9 @@ constexpr const char* kTag = "wifi";
 // fix the credentials without a serial cable (wrong password, SSID renamed).
 constexpr int kFailuresBeforePortal = 5;
 constexpr int kMaxScanRecords = 24;
+// SoftAP forced while STA is still online auto-closes so the open portal does
+// not linger on APSTA forever.
+constexpr int kForcedPortalTtlMs = 10 * 60 * 1000;
 
 std::mutex g_mutex;
 esp_netif_t* g_sta_netif = nullptr;
@@ -32,8 +35,14 @@ std::string g_ssid;
 std::string g_ip;
 bool g_connected = false;
 bool g_ap_active = false;
+// ForcePortal hold: STA GOT_IP must not tear SoftAP down while the technician
+// is still on viaaccess-qr-setup (TTL clears the hold).
+bool g_portal_hold = false;
 int g_failures = 0;
 esp_timer_handle_t g_reconnect_timer = nullptr;
+esp_timer_handle_t g_portal_ttl_timer = nullptr;
+
+void PortalTtlFired(void* /*argument*/);
 
 void ReconnectTimerFired(void* /*argument*/) { esp_wifi_connect(); }
 
@@ -71,8 +80,60 @@ void CopySsidPassword(wifi_sta_config_t* sta, const std::string& ssid,
               std::min(password.size(), sizeof(sta->password) - 1));
 }
 
+void StopPortalTtlTimer() {
+  if (g_portal_ttl_timer != nullptr) {
+    esp_timer_stop(g_portal_ttl_timer);
+  }
+}
+
+void SchedulePortalTtlIfNeeded() {
+  // Only auto-close when SoftAP is sharing the radio with a live STA link.
+  if (!g_ap_active || !g_connected) {
+    StopPortalTtlTimer();
+    return;
+  }
+  if (g_portal_ttl_timer == nullptr) {
+    const esp_timer_create_args_t args = {
+        .callback = PortalTtlFired,
+        .arg = nullptr,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "softap_ttl",
+        .skip_unhandled_events = true,
+    };
+    if (esp_timer_create(&args, &g_portal_ttl_timer) != ESP_OK) {
+      return;
+    }
+  }
+  esp_timer_stop(g_portal_ttl_timer);
+  esp_timer_start_once(g_portal_ttl_timer,
+                       static_cast<uint64_t>(kForcedPortalTtlMs) * 1000);
+  ESP_LOGI(kTag, "SoftAP will auto-close in %d min while STA stays up",
+           kForcedPortalTtlMs / 60000);
+}
+
+void PortalTtlFired(void* /*argument*/) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  g_portal_hold = false;
+  if (!g_ap_active) {
+    return;
+  }
+  if (!g_connected) {
+    // Still offline — keep SoftAP for recovery.
+    return;
+  }
+  ESP_LOGW(kTag, "SoftAP TTL elapsed; closing portal (STA still connected)");
+  const esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
+  if (err == ESP_OK) {
+    g_ap_active = false;
+    PublishPhase(app::WifiPhase::kConnected);
+  }
+}
+
 esp_err_t SetApMode(bool enable) {
   if (enable == g_ap_active) {
+    if (enable) {
+      SchedulePortalTtlIfNeeded();
+    }
     return ESP_OK;
   }
   const esp_err_t err = esp_wifi_set_mode(enable ? WIFI_MODE_APSTA : WIFI_MODE_STA);
@@ -80,7 +141,12 @@ esp_err_t SetApMode(bool enable) {
     return err;
   }
   g_ap_active = enable;
-  ESP_LOGI(kTag, "SoftAP %s", enable ? "up as " : "down");
+  ESP_LOGI(kTag, "SoftAP %s", enable ? "up" : "down");
+  if (enable) {
+    SchedulePortalTtlIfNeeded();
+  } else {
+    StopPortalTtlTimer();
+  }
   return ESP_OK;
 }
 
@@ -120,10 +186,16 @@ void OnWifiEvent(void* /*arg*/, esp_event_base_t base, int32_t id, void* data) {
       g_failures = 0;
       g_ip = buffer;
       ESP_LOGI(kTag, "connected to %s with ip %s", g_ssid.c_str(), g_ip.c_str());
-      // The portal stays up until the station is actually usable, so a bad
-      // password never locks the technician out.
-      SetApMode(false);
-      PublishPhase(app::WifiPhase::kConnected);
+      // ForcePortal hold keeps SoftAP up for the technician even while STA is
+      // online. Otherwise close SoftAP once the station is usable so a bad
+      // password never locks recovery out permanently.
+      if (g_portal_hold) {
+        SchedulePortalTtlIfNeeded();
+        PublishPhase(app::WifiPhase::kProvisioning);
+      } else {
+        SetApMode(false);
+        PublishPhase(app::WifiPhase::kConnected);
+      }
     }
     // Outside the lock: the clock service touches app::State and the I2C bus.
     clock_service::OnNetworkUp();
@@ -275,9 +347,50 @@ bool portal_active() {
   return g_ap_active;
 }
 
+std::string SoftApHostAddress() {
+  esp_netif_ip_info_t ap_ip{};
+  if (g_ap_netif != nullptr &&
+      esp_netif_get_ip_info(g_ap_netif, &ap_ip) == ESP_OK && ap_ip.ip.addr != 0) {
+    char buffer[16] = {};
+    esp_ip4addr_ntoa(&ap_ip.ip, buffer, sizeof(buffer));
+    return buffer;
+  }
+  return "192.168.4.1";
+}
+
+bool host_is_softap(const std::string& host_header) {
+  std::string host = viaaccess::ToLower(viaaccess::Trim(host_header));
+  if (host.empty()) {
+    return false;
+  }
+  // Strip :port (IPv4 Host only — SoftAP is never IPv6 here).
+  const auto colon = host.rfind(':');
+  if (colon != std::string::npos) {
+    host = host.substr(0, colon);
+  }
+  return host == SoftApHostAddress();
+}
+
+bool local_setup_writes_allowed(bool device_configured, const std::string& host_header) {
+  if (!device_configured) {
+    // First Wi‑Fi + claim still happen on the LAN after SoftAP drops.
+    return true;
+  }
+  // BOOT 3-click opens SoftAP; browsers must use http://192.168.4.1:3710/…
+  // so *.local / STA IP stay read-only during the portal window. SoftAP phones
+  // use HTTP (self-signed HTTPS is blocked by many mobile browsers on SoftAP).
+  return portal_active() && host_is_softap(host_header);
+}
+
 esp_err_t ForcePortal() {
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_portal_hold = true;
+  }
   const esp_err_t err = SetApMode(true);
   if (err != ESP_OK) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_portal_hold = false;
     return err;
   }
   {
@@ -286,9 +399,12 @@ esp_err_t ForcePortal() {
     // if the station is still associated on the side.
     g_failures = kFailuresBeforePortal;
     PublishPhase(app::WifiPhase::kProvisioning);
+    SchedulePortalTtlIfNeeded();
   }
-  ESP_LOGW(kTag, "SoftAP forced: join %s and open http://192.168.4.1:3710/setup",
-           kSetupApSsid);
+  ESP_LOGW(kTag,
+           "SoftAP forced: join %s and open http://192.168.4.1:3710/setup "
+           "(writes only via SoftAP; auto-closes in %d min if STA stays up)",
+           kSetupApSsid, kForcedPortalTtlMs / 60000);
   return ESP_OK;
 }
 

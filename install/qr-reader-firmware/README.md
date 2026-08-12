@@ -244,7 +244,7 @@ not touched during reset). Gestures are exclusive in time:
 |---|---|
 | 1 click | Announce posture: success beep = `ONLINE`, fail beeps = setup / contingency / stale |
 | 2 clicks | Synthetic REX — only when **Fiação** has REX enabled **and** Simular checked |
-| 3 clicks | Force SoftAP `viaaccess-qr-setup` immediately (join and open `http://192.168.4.1:3710/setup` or `/wifi`) without clearing the device key |
+| 3 clicks | Force SoftAP `viaaccess-qr-setup` immediately (join and open `http://192.168.4.1:3710/setup` or `/wifi`) without clearing the device key. Required to change setup after the reader is provisioned (LAN/STA writes are rejected). SoftAP auto-closes in ~10 min if STA stays up. |
 | Hold 2 s | Warning cue (keep holding) |
 | Hold 5 s | Factory reset: clear Identity credentials **and** Wi-Fi, then reboot into SoftAP |
 
@@ -354,7 +354,7 @@ main/                       ESP-IDF application
   wifi_manager.cpp          SoftAP portal, station
   clock_service.cpp         DS3231 at boot, SNTP once online, clock trust
   ds3231_driver.cpp         I2C transport for the battery-backed clock
-  http_server.cpp           local API on port 3710
+  http_server.cpp           local HTTP API on port 3710 (+ optional HTTPS :443)
   identity_client.cpp       redeem, claim, policy, device-config, commands
   scan_service.cpp          the single passage pipeline
   qr_reader.cpp             EP8280L over UART
@@ -460,7 +460,7 @@ counterpart because the Pi gets its date from the distribution.
 2. Join it and open `http://192.168.4.1:3710/wifi`, pick the network and submit.
    The portal drops as soon as the station associates, which is the success
    signal; the appliance is then reachable at
-   `http://viaaccess-qr.local:3710/setup` on the LAN.
+   `http://viaaccess-qr.local:3710/setup` on the LAN (optional `https://…/` on port 443 with `curl -k`).
 3. Open `/setup` and paste the provisioning URL or the `clm_` token from the
    dashboard. Provisioning derives the LAN hostname from the access point slug
    (`viaaccess-qr-{slug}.local`).
@@ -478,7 +478,7 @@ other two only when they can actually be used:
 |---|---|
 | Provisioning URL or token | Always; the one thing a technician must paste |
 | Identity URL | Only when the pasted text is not a full URL, since a bare `clm_` token carries no host |
-| Factory PIN | Only when `/api/setup` answers `pinRequired`, which needs `setupPin` in `config.json` |
+| Setup PIN | After provision: required on every local write. Claim from Identity sets a 6-digit PIN; manual path asks for one on first save. Legacy units without a PIN get `pinSetupRequired` until they set one. |
 
 Prefer the full URL from the Identity admin panel: it already carries the host, so
 the form stays at one field. If the claim answers with a loopback `identityUrl`
@@ -504,7 +504,7 @@ on load, once, so a refresh does not fight typing.
 | `GET /health` | Posture, policy freshness, reader stats, last scan |
 | `POST /scan` | Passage from an integrator or from homologation |
 | `GET /setup`, `GET /wifi` | Technician pages |
-| `GET /api/setup` | Current state for the pages (never returns the device key) |
+| `GET /api/setup` | Current state for the pages (never returns the device key or setup PIN). Includes `pinRequired` / `pinSetupRequired`. |
 | `POST /api/setup` | Manual configuration with an `idb_` device key |
 | `POST /api/setup/provision` | Zero-touch claim with a `clm_` token (saves after claim; no second Identity ping) |
 | `POST /api/setup/hardware` | Wiring only, no credentials and no Identity round-trip |
@@ -649,13 +649,33 @@ and a long `Location` header. The OTA client follows redirects explicitly and us
 4 KB HTTP buffers so that hop succeeds; without it the appliance acks
 `OTA HTTP 302` and stays on the previous image.
 
+## Local setup security (shipped)
+
+After claim, mutating `/api/setup*` requires:
+
+1. **Setup PIN** (from Identity claim or set on the manual path).
+2. **SoftAP portal up** (BOOT 3-click / STA failures / first boot). SoftAP forced
+   while STA is up is **held** until TTL (~10 min) so GOT_IP does not kick the phone.
+3. **URL on SoftAP** — `http://192.168.4.1:3710/setup` on Wi‑Fi `viaaccess-qr-setup`
+   (`Host: 192.168.4.1`). SoftAP uses **HTTP on purpose**: mobile browsers often
+   hard-fail self-signed HTTPS on captive SoftAP networks (“site unavailable”).
+   Optional HTTPS on `:443` (`https://192.168.4.1/setup`, `curl -k`) for LAN/scripts.
+   `*.local` / STA IP stay **read-only** even while SoftAP is active.
+
+## Next evolution
+
+- **Trusted SoftAP TLS** (per-device cert / TOFU in the admin or member app) so
+  phones can use HTTPS on SoftAP without a hard fail. Until then HTTP SoftAP +
+  PIN + Host gate remain the commissioning path.
+- **Drop the `Host: 192.168.4.1` heuristic** once SoftAP TLS identity is strong
+  enough that LAN cannot be mistaken for the portal.
+
 ## Not in this scaffold
 
 Deliberate gaps, listed so nobody assumes parity with the Pi:
 
 - **Full flash encryption / secure boot.** NVS secrets are encrypted via HMAC;
   the rest of flash (app, LittleFS) is not ciphertext at rest.
-- **HTTPS on SoftAP `/setup`.** Provisioning still uses HTTP on the local AP/LAN.
 - **Full IANA timezone database.** Offline `after_hours` covers the zones ViaAccess
   ships today (`America/Sao_Paulo`, `UTC`); other IANA ids fail open until added
   to the offset table.

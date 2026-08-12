@@ -1,4 +1,7 @@
-// Local HTTP surface, port 3710 by default.
+// Local HTTP surface, port 3710 by default (SoftAP / phone setup).
+// Optional HTTPS on :443 with a factory self-signed cert for LAN scripts
+// (`curl -k`). SoftAP phones must use HTTP — mobile browsers often hard-fail
+// self-signed TLS on captive SoftAP networks.
 //
 // Ports internal/server/http.go: same routes, same status codes and the same
 // Portuguese error bodies, so scripts/homologate.sh and the dashboard cannot

@@ -11,17 +11,34 @@
     h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
     p { color: #9aa7b5; font-size: 0.9rem; }
     a { color: #60a5fa; }
+    [hidden] { display: none !important; }
     label { display: block; margin-top: 1rem; font-size: 0.85rem; }
+    .field-hint { display: block; margin-top: 0.35rem; font-size: 0.75rem; color: #9aa7b5; line-height: 1.4; }
     input, select { width: 100%; margin-top: 0.35rem; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: inherit; box-sizing: border-box; }
-    button { margin-top: 1.25rem; width: 100%; padding: 0.7rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
-    button.secondary { background: #121820; border: 1px solid #2a3441; color: #9aa7b5; margin-top: 0.5rem; }
+    button { margin-top: 0; width: 100%; padding: 0.7rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
+    button.secondary { background: #0b0f14; border: 1px solid #2a3441; color: #9aa7b5; margin-top: 0.5rem; }
     button:disabled { opacity: 0.6; cursor: wait; }
-    .msg { margin-top: 1rem; font-size: 0.9rem; }
+    .msg { margin-top: 0.85rem; font-size: 0.9rem; }
     .err { color: #f87171; }
     .ok { color: #4ade80; }
-    .netbar { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; font-size: 0.8rem; color: #9aa7b5; line-height: 1.45; }
-    .netbar strong { color: #e8edf2; font-weight: 600; }
+    .netbar, .lockbar { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; font-size: 0.8rem; color: #9aa7b5; line-height: 1.45; }
+    .netbar strong, .lockbar strong { color: #e8edf2; font-weight: 600; }
     .netbar.offline { border-color: #7f1d1d; }
+    .lockbar { border-color: #92400e; background: #1a1408; color: #fbbf24; }
+    .lockbar[hidden] { display: none !important; }
+    .actions button[type="submit"]:disabled { opacity: 0.45; cursor: not-allowed; }
+    .actions {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px solid #2a3441;
+      background: #121820;
+    }
+    .actions .pin-field,
+    .actions .setup-pin-field { margin-top: 0; }
+    .actions .pin-field + .setup-pin-field,
+    .actions .pin-field + button,
+    .actions .setup-pin-field + button { margin-top: 0.85rem; }
   </style>
 </head>
 <body>
@@ -33,11 +50,9 @@
     </p>
 
     <div id="netbar" class="netbar">Verificando rede…</div>
+    <div id="lockbar" class="lockbar" hidden></div>
 
     <form id="wifi-form">
-      <label>PIN de fábrica (se configurado)
-        <input name="pin" type="password" autocomplete="off" />
-      </label>
       <label>Redes encontradas
         <select id="ssid-list"><option value="">Buscando…</option></select>
       </label>
@@ -47,13 +62,24 @@
       <label>Senha
         <input name="password" type="password" autocomplete="off" placeholder="Deixe vazio para rede aberta" />
       </label>
-      <button type="submit">Conectar</button>
-      <button type="button" class="secondary" id="rescan">Buscar redes novamente</button>
-      <div id="msg" class="msg"></div>
+      <div class="actions">
+        <label id="pin-field" class="pin-field" hidden>PIN de setup
+          <input name="pin" type="password" inputmode="numeric" autocomplete="off" />
+        </label>
+        <label id="setup-pin-field" class="setup-pin-field" hidden>Definir PIN de setup
+          <input name="setupPin" type="password" inputmode="numeric" autocomplete="off"
+            placeholder="4 a 8 dígitos" />
+          <span class="field-hint">Este leitor ainda não tem PIN. Defina um agora para trocar a rede.</span>
+        </label>
+        <button type="submit">Conectar</button>
+        <button type="button" class="secondary" id="rescan">Buscar redes novamente</button>
+        <div id="msg" class="msg"></div>
+      </div>
     </form>
   </main>
   <script>
     const netbar = document.getElementById('netbar');
+    const lockbar = document.getElementById('lockbar');
     const list = document.getElementById('ssid-list');
     const ssidInput = document.querySelector('input[name="ssid"]');
     const msg = document.getElementById('msg');
@@ -63,6 +89,23 @@
         const res = await fetch('/api/setup');
         const data = await res.json();
         const net = data.network || {};
+        const writesAllowed = data.setupWritesAllowed !== false;
+        const pinField = document.getElementById('pin-field');
+        const setupPinField = document.getElementById('setup-pin-field');
+        if (pinField) pinField.hidden = !data.pinRequired || !writesAllowed;
+        if (setupPinField) setupPinField.hidden = !data.pinSetupRequired || !writesAllowed;
+        const submit = document.querySelector('#wifi-form button[type="submit"]');
+        if (submit) submit.disabled = !writesAllowed;
+        if (!writesAllowed) {
+          lockbar.hidden = false;
+          lockbar.innerHTML =
+            '<strong>Troca de rede bloqueada nesta conexão.</strong> Três cliques no BOOT, ' +
+            'conecte em <code>viaaccess-qr-setup</code> e abra ' +
+            '<code>http://192.168.4.1:3710/wifi</code>.';
+        } else {
+          lockbar.hidden = true;
+          lockbar.textContent = '';
+        }
         if (net.connected) {
           netbar.className = 'netbar';
           netbar.innerHTML = '<strong>Conectado a</strong> ' + (net.ssid || '—') + ' · IP ' + (net.ip || '—') +
@@ -114,6 +157,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             pin: fd.get('pin') || '',
+            setupPin: fd.get('setupPin') || '',
             ssid: fd.get('ssid'),
             password: fd.get('password') || '',
           }),

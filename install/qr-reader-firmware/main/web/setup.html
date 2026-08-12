@@ -21,8 +21,21 @@
     input, select, textarea { width: 100%; margin-top: 0.35rem; padding: 0.55rem 0.65rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: inherit; box-sizing: border-box; }
     label.check input[type="checkbox"] { width: 1rem; height: 1rem; margin: 0; padding: 0; flex-shrink: 0; accent-color: #3b82f6; }
     textarea { min-height: 4.5rem; font-family: ui-monospace, monospace; font-size: 0.8rem; }
-    button[type="submit"] { margin-top: 1.25rem; width: 100%; padding: 0.7rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
+    button[type="submit"] { margin-top: 0; width: 100%; padding: 0.7rem; border: 0; border-radius: 8px; background: #3b82f6; color: white; font-weight: 600; cursor: pointer; }
     button[type="submit"]:disabled { opacity: 0.6; cursor: wait; }
+    .actions {
+      margin-top: 1.5rem;
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px solid #2a3441;
+      background: #121820;
+    }
+    .actions .pin-field,
+    .actions .setup-pin-field { margin-top: 0; }
+    .actions .pin-field + .setup-pin-field,
+    .actions .pin-field + button,
+    .actions .setup-pin-field + button { margin-top: 0.85rem; }
+    .actions .msg { margin-top: 0.85rem; }
     .tabs { display: flex; gap: 0.5rem; margin-top: 1rem; }
     .tab { flex: 1; padding: 0.55rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; color: #9aa7b5; cursor: pointer; }
     .tab.active { border-color: #3b82f6; color: #e8edf2; }
@@ -33,9 +46,12 @@
     .ok { color: #4ade80; }
     fieldset { border: 1px solid #2a3441; border-radius: 8px; margin-top: 1rem; padding: 0.75rem 1rem; }
     legend { padding: 0 0.35rem; font-size: 0.85rem; color: #9aa7b5; }
-    .factory, .netbar { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; font-size: 0.8rem; color: #9aa7b5; line-height: 1.45; }
-    .factory strong, .netbar strong { color: #e8edf2; font-weight: 600; }
+    .factory, .netbar, .lockbar { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #2a3441; background: #121820; font-size: 0.8rem; color: #9aa7b5; line-height: 1.45; }
+    .factory strong, .netbar strong, .lockbar strong { color: #e8edf2; font-weight: 600; }
     .netbar.offline { border-color: #7f1d1d; }
+    .lockbar { border-color: #92400e; background: #1a1408; color: #fbbf24; }
+    .lockbar[hidden] { display: none !important; }
+    .actions button[type="submit"]:disabled { opacity: 0.45; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -45,6 +61,7 @@
     <p class="hint-url">Prefira <code id="hint-url">http://viaaccess-qr.local:3710/setup</code> (mesma Wi‑Fi). Se não resolver, use o IP mostrado abaixo.</p>
 
     <div id="netbar" class="netbar">Verificando rede…</div>
+    <div id="lockbar" class="lockbar" hidden></div>
 
     <div class="tabs">
       <button type="button" class="tab active" data-tab="provision">Provisionar (QR)</button>
@@ -176,9 +193,6 @@
 
     <div id="panel-provision" class="panel active">
       <form id="provision-form">
-        <label class="pin-field" hidden>PIN de fábrica
-          <input name="pin" type="password" autocomplete="off" />
-        </label>
         <label>URL ou token de provisionamento
           <textarea name="claimInput" required placeholder="https://…/bridge/provision?t=clm_… ou só clm_…"></textarea>
         </label>
@@ -197,16 +211,19 @@
           Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 (opcional, desligado) · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
           Para alterar GPIO, LED ou buzzer, use a aba <strong>Fiação</strong> depois.
         </div>
-        <button type="submit">Provisionar</button>
-        <div id="provision-msg" class="msg"></div>
+        <div class="actions">
+          <label class="pin-field" hidden>PIN de setup
+            <input name="pin" type="password" inputmode="numeric" autocomplete="off" />
+            <span class="field-hint">Exigido quando o leitor já tem PIN (reprovisionar / alterar).</span>
+          </label>
+          <button type="submit">Provisionar</button>
+          <div id="provision-msg" class="msg"></div>
+        </div>
       </form>
     </div>
 
     <div id="panel-manual" class="panel">
       <form id="setup-form">
-        <label class="pin-field" hidden>PIN de fábrica
-          <input name="pin" type="password" autocomplete="off" />
-        </label>
         <label>URL do Identity
           <input name="identityUrl" required placeholder="https://identity.cliente.com" />
         </label>
@@ -230,8 +247,19 @@
           <input name="emitDetection" type="checkbox" checked />
           <span>Emitir detection no ViaAccess (recomendado sem câmera na porta)</span>
         </label>
-        <button type="submit">Salvar e testar conexão</button>
-        <div id="manual-msg" class="msg"></div>
+        <div class="actions">
+          <label class="pin-field" hidden>PIN de setup
+            <input name="pin" type="password" inputmode="numeric" autocomplete="off" />
+          </label>
+          <label class="setup-pin-field">Novo PIN de setup
+            <input name="setupPin" type="password" inputmode="numeric" autocomplete="off"
+              placeholder="4 a 8 dígitos" />
+            <span class="field-hint">Obrigatório na primeira configuração manual. Protege o /setup
+              depois do provisionamento.</span>
+          </label>
+          <button type="submit">Salvar e testar conexão</button>
+          <div id="manual-msg" class="msg"></div>
+        </div>
       </form>
     </div>
 
@@ -240,9 +268,6 @@
         <p>GPIO, LED e buzzer. Credenciais, Identity e Wi‑Fi ficam como estão; nada é
           enviado ao Identity (funciona com a rede fora). Hostname .local também pode
           ser definido nas abas Provisionar / Manual.</p>
-        <label class="pin-field" hidden>PIN de fábrica
-          <input name="pin" type="password" autocomplete="off" />
-        </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3</strong><br />
           Relé GPIO 10 · Porta GPIO 11 · REX GPIO 12 (opcional) · Buzzer GPIO 7 · LED WS2812 GPIO 38 · UART RX 17 / TX 18 · RTC SDA 8 / SCL 9
@@ -252,15 +277,32 @@
           <span class="field-hint">Vazio: mantém o hostname atual (ou o derivado do slug).</span>
         </label>
         <div class="wiring-host"></div>
-        <button type="submit">Salvar fiação</button>
-        <div id="wiring-msg" class="msg"></div>
+        <div class="actions">
+          <label class="pin-field" hidden>PIN de setup
+            <input name="pin" type="password" inputmode="numeric" autocomplete="off" />
+          </label>
+          <label class="setup-pin-field" hidden>Definir PIN de setup
+            <input name="setupPin" type="password" inputmode="numeric" autocomplete="off"
+              placeholder="4 a 8 dígitos" />
+            <span class="field-hint">Este leitor ainda não tem PIN. Defina um agora para proteger
+              alterações locais.</span>
+          </label>
+          <button type="submit">Salvar fiação</button>
+          <div id="wiring-msg" class="msg"></div>
+        </div>
       </form>
     </div>
   </main>
   <script>
     const netbar = document.getElementById('netbar');
+    const lockbar = document.getElementById('lockbar');
     const hintUrl = document.getElementById('hint-url');
     const pinFields = document.querySelectorAll('.pin-field');
+    const setupPinFields = document.querySelectorAll('.setup-pin-field');
+    let pinRequired = false;
+    let pinSetupRequired = false;
+    let setupRequired = true;
+    let setupWritesAllowed = true;
 
     // Wiring lives only on the Fiação tab (one form, one clone of the template).
     const wiringFields = document.getElementById('wiring-fields');
@@ -344,9 +386,52 @@
         const net = data.network || {};
         const clock = data.clock || {};
         prefillHardware(data.hardware, data.mdnsHostname);
-        // Only a factory image with setupPin in config.json needs the field, so
-        // asking every installer for a PIN that does not exist is pure noise.
-        pinFields.forEach((field) => { field.hidden = !data.pinRequired; });
+        pinRequired = Boolean(data.pinRequired);
+        pinSetupRequired = Boolean(data.pinSetupRequired);
+        setupRequired = Boolean(data.setupRequired);
+        setupWritesAllowed = data.setupWritesAllowed !== false;
+        // Existing PIN: show auth field. Legacy without PIN: show establish field.
+        // Manual first provision: always show establish field on that tab.
+        pinFields.forEach((field) => { field.hidden = !pinRequired || !setupWritesAllowed; });
+        setupPinFields.forEach((field) => {
+          const onManual = field.closest('#panel-manual') != null;
+          const show = pinSetupRequired || (onManual && setupRequired);
+          field.hidden = !(show && setupWritesAllowed);
+        });
+        document.querySelectorAll('.actions button[type="submit"]').forEach((btn) => {
+          btn.disabled = !setupWritesAllowed;
+        });
+        if (!setupWritesAllowed) {
+          lockbar.hidden = false;
+          lockbar.style.borderColor = '';
+          lockbar.style.background = '';
+          lockbar.style.color = '';
+          if (net.portalActive && !net.viaSoftAp) {
+            lockbar.innerHTML =
+              '<strong>SoftAP ativo, mas você abriu pela LAN (<code>.local</code>).</strong> ' +
+              'Esta página é só leitura. Conecte em <code>viaaccess-qr-setup</code> e abra ' +
+              '<code>http://192.168.4.1:3710/setup</code> para alterar (com o PIN).';
+          } else {
+            lockbar.innerHTML =
+              '<strong>Alterações bloqueadas.</strong> Depois de provisionado, ative o SoftAP com ' +
+              '<strong>3 cliques no BOOT</strong>, conecte em <code>viaaccess-qr-setup</code> e abra ' +
+              '<code>http://192.168.4.1:3710/setup</code> (com o PIN). O portal fecha sozinho em ~10&nbsp;min.';
+          }
+        } else if (net.portalActive && net.viaSoftAp) {
+          lockbar.hidden = false;
+          lockbar.style.borderColor = '#166534';
+          lockbar.style.background = '#0a1a10';
+          lockbar.style.color = '#4ade80';
+          lockbar.innerHTML =
+            '<strong>Modo setup ativo (SoftAP).</strong> Pode alterar com o PIN. ' +
+            'O portal fecha em ~10&nbsp;min.';
+        } else {
+          lockbar.hidden = true;
+          lockbar.textContent = '';
+          lockbar.style.borderColor = '';
+          lockbar.style.background = '';
+          lockbar.style.color = '';
+        }
         hintUrl.textContent = 'http://' + (data.mdnsHostname || 'viaaccess-qr') +
           '.local:' + (data.httpPort || 3710) + '/setup';
         if (net.connected) {
@@ -354,6 +439,8 @@
           netbar.innerHTML = '<strong>Rede:</strong> ' + (net.ssid || '—') + ' · IP ' + (net.ip || '—') +
             ' · <a href="/wifi">trocar rede</a><br /><strong>Firmware:</strong> ' + (data.agentVersion || '—') +
             ' · <strong>mDNS:</strong> ' + (data.mdnsHostname || '—') + '.local' +
+            (net.portalActive ? ' · SoftAP ativo' : '') +
+            (net.viaSoftAp ? ' · via SoftAP' : '') +
             '<br /><strong>Hora:</strong> ' + (clock.sourceLabel || '—') +
             (clock.rtcBatteryLost
               ? ' · <span class="err">bateria do relógio esgotada, troque a célula</span>'
@@ -467,6 +554,7 @@
       '/api/setup/provision',
       (fd) => ({
         pin: fd.get('pin') || '',
+        setupPin: fd.get('setupPin') || '',
         claimInput: fd.get('claimInput'),
         identityUrl: fd.get('identityUrl') || '',
         ...mdnsPayload(fd),
@@ -479,6 +567,7 @@
       '/api/setup',
       (fd) => ({
         pin: fd.get('pin') || '',
+        setupPin: fd.get('setupPin') || '',
         identityUrl: fd.get('identityUrl'),
         deviceKey: fd.get('deviceKey'),
         accessPointSlug: fd.get('accessPointSlug') || '',
@@ -493,6 +582,7 @@
       '/api/setup/hardware',
       (fd) => ({
         pin: fd.get('pin') || '',
+        setupPin: fd.get('setupPin') || '',
         ...hardwarePayload(fd),
       }),
     );

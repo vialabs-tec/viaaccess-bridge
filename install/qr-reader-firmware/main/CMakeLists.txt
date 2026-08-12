@@ -22,7 +22,11 @@ idf_component_register(
     "sync_task.cpp"
     "wifi_manager.cpp"
   INCLUDE_DIRS "."
-  EMBED_FILES "web/setup.html" "web/wifi.html"
+  EMBED_FILES
+    "web/setup.html"
+    "web/wifi.html"
+    "certs/servercert.pem"
+    "certs/prvtkey.pem"
   REQUIRES
     viaaccess_core
     app_update
@@ -31,6 +35,7 @@ idf_component_register(
     esp_driver_i2c
     esp_http_client
     esp_http_server
+    esp_https_server
     esp_netif
     esp_timer
     esp_wifi

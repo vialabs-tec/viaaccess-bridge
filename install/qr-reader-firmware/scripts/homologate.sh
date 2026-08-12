@@ -12,6 +12,12 @@ set -euo pipefail
 READER_URL="${READER_URL:-http://viaaccess-qr.local:3710}"
 IDENTITY_URL="${IDENTITY_URL:-}"
 
+# Optional HTTPS :443 uses a factory self-signed cert.
+CURL_INSECURE=()
+if [[ "$READER_URL" == https://* ]]; then
+  CURL_INSECURE=(-k)
+fi
+
 pass=0
 fail=0
 
@@ -43,7 +49,7 @@ check() {
 show() { printf '  ----  %-34s %s\n' "$1" "${2:-<vazio>}"; }
 
 echo "== 1. Alcance e postura =="
-if ! health="$(curl -sf --max-time 10 "$READER_URL/health")"; then
+if ! health="$(curl "${CURL_INSECURE[@]}" -sf --max-time 10 "$READER_URL/health")"; then
   echo "  FAIL  leitor inacessível em $READER_URL"
   echo ""
   echo "Se o leitor ainda não tem Wi-Fi, entre na rede viaaccess-qr-setup e use"
@@ -104,7 +110,7 @@ fi
 
 echo ""
 echo "== 3. QR inválido (deve bloquear) =="
-invalid_status="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+invalid_status="$(curl "${CURL_INSECURE[@]}" -s -o /dev/null -w '%{http_code}' --max-time 15 \
   -X POST "$READER_URL/scan" -H 'Content-Type: application/json' \
   -d '{"qrUrl":"https://exemplo.invalido/qr/homologacao"}')"
 if [[ "$invalid_status" == "4"* ]]; then
@@ -120,7 +126,7 @@ echo "== 4. Passagem real =="
 if [[ -z "${QR_URL:-}" ]]; then
   echo "  SKIP  defina QR_URL com um QR dinâmico do app do associado"
 else
-  first="$(curl -s --max-time 20 -X POST "$READER_URL/scan" \
+  first="$(curl "${CURL_INSECURE[@]}" -s --max-time 20 -X POST "$READER_URL/scan" \
     -H 'Content-Type: application/json' -d "{\"qrUrl\":\"$QR_URL\"}")"
   check "primeira leitura ok" "$(printf '%s' "$first" | jq_get ok)" "True"
   check "scanPath" "$(printf '%s' "$first" | jq_get scanPath)" "online"
@@ -129,7 +135,7 @@ else
 
   # The same QR inside the debounce window must be swallowed locally instead of
   # reaching Identity, which is what protects the door from a double read.
-  second="$(curl -s --max-time 20 -X POST "$READER_URL/scan" \
+  second="$(curl "${CURL_INSECURE[@]}" -s --max-time 20 -X POST "$READER_URL/scan" \
     -H 'Content-Type: application/json' -d "{\"qrUrl\":\"$QR_URL\"}")"
   check "segunda leitura em debounce" "$(printf '%s' "$second" | jq_get ignored)" "True"
 fi

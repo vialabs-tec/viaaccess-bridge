@@ -41,6 +41,15 @@ bool connected();
 // ip is the station address, empty while not connected.
 std::string ip();
 
+// True while the SoftAP interface is up (first boot, STA failures, or ForcePortal).
 bool portal_active();
+
+// True when the HTTP Host is the SoftAP address (192.168.4.1[:port]).
+// Browser tabs on *.local stay read-only even while SoftAP is up (APSTA).
+bool host_is_softap(const std::string& host_header);
+
+// Local setup POSTs: always allowed before provision; after provision only when
+// SoftAP portal is up AND the request Host is 192.168.4.1 (not *.local / STA IP).
+bool local_setup_writes_allowed(bool device_configured, const std::string& host_header);
 
 }  // namespace wifi

@@ -32,6 +32,8 @@ struct ClaimResult {
   std::string device_key;
   std::string identity_url;
   std::string access_point_slug;
+  /** Local /setup PIN from Identity; persist and require on later writes. */
+  std::string setup_pin;
   bool emit_detection = true;
   int debounce_ms = 0;
   bool unlock_on_authorized_only = true;

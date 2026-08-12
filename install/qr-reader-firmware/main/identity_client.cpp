@@ -368,6 +368,7 @@ ClaimResult ClaimProvision(const std::string& identity_url,
   result.device_key = read_string("deviceKey");
   result.identity_url = read_string("identityUrl");
   result.access_point_slug = read_string("accessPointSlug");
+  result.setup_pin = read_string("setupPin");
 
   const cJSON* defaults = cJSON_GetObjectItemCaseSensitive(parsed, "defaults");
   if (cJSON_IsObject(defaults)) {
