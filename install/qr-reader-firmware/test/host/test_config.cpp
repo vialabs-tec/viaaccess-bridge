@@ -9,6 +9,7 @@ using viaaccess::ApplyRemoteDeviceConfig;
 using viaaccess::DefaultRuntimeConfig;
 using viaaccess::Normalize;
 using viaaccess::NormalizeBleBeaconUuid;
+using viaaccess::NormalizeRelayUnlockMode;
 using viaaccess::RemoteDeviceConfig;
 using viaaccess::ResetToSetup;
 using viaaccess::RuntimeConfig;
@@ -19,6 +20,27 @@ VA_TEST(NormalizeRestoresDefaultPort) {
   cfg.http_port = 0;
   cfg = Normalize(cfg);
   CHECK_EQ(cfg.http_port, viaaccess::kDefaultHttpPort);
+}
+
+VA_TEST(NormalizeRelayUnlockModeDefaultsAndPreservesPulse) {
+  CHECK_EQ(NormalizeRelayUnlockMode(""), std::string("hold"));
+  CHECK_EQ(NormalizeRelayUnlockMode("PULSE"), std::string("pulse"));
+  CHECK_EQ(NormalizeRelayUnlockMode("until_closed"), std::string("until_closed"));
+  CHECK_EQ(NormalizeRelayUnlockMode("nope"), std::string("hold"));
+
+  RuntimeConfig strike = DefaultRuntimeConfig();
+  strike.relay.unlock_mode = "pulse";
+  strike.relay.pulse_ms = 0;
+  strike = Normalize(strike);
+  CHECK_EQ(strike.relay.unlock_mode, std::string("pulse"));
+  CHECK_EQ(strike.relay.pulse_ms, 500);
+
+  RuntimeConfig until = DefaultRuntimeConfig();
+  until.relay.unlock_mode = "until_closed";
+  until.relay.pulse_ms = 0;
+  until = Normalize(until);
+  CHECK_EQ(until.relay.unlock_mode, std::string("until_closed"));
+  CHECK_EQ(until.relay.pulse_ms, 30000);
 }
 
 VA_TEST(NormalizeTrimsIdentityUrlAndKey) {
@@ -35,6 +57,7 @@ VA_TEST(FactoryHardwareDefaultsForEsp32s3) {
   CHECK(cfg.relay.enabled);
   CHECK_EQ(cfg.relay.gpio_pin, 10);
   CHECK_EQ(cfg.relay.pulse_ms, 15000);
+  CHECK_EQ(cfg.relay.unlock_mode, std::string("hold"));
   // Low-level trigger, matching the reference module: the inverted setting keeps
   // the coil energized at rest, which releases the door instead of locking it.
   CHECK(!cfg.relay.active_high);

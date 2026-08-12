@@ -84,6 +84,18 @@ chip, which is what keeps the drift bounded and the flag clear.
 
 ### Wiring the relay
 
+`/setup` → **Fiação** picks how long the coil stays active after authorization
+(`relay.unlockMode` + `relay.pulseMs`):
+
+| Tipo de trava | `unlockMode` | Default `pulseMs` | Behaviour |
+|---|---|---|---|
+| Fechadura elétrica / strike | `pulse` | 500 | Short solenoid pulse |
+| Eletroímã / maglock (fail-safe) | `hold` | 15000 | Timed unlock window (factory default) |
+| Manter até fechar | `until_closed` | 30000 | Stay unlocked until reed open→close; value is max safety timeout |
+
+Identity still reads `X-ViaAccess-Relay-Pulse-Ms` for the app countdown and
+`door_opened` window (for `until_closed`, that header is the max timeout).
+
 The trigger polarity describes the board, it is not a safety preference, and it is
 the one detail that fails dangerously when it disagrees with the hardware. A module
 that switches on a **low** input (`IN` pulled to GND, the usual opto-isolated board

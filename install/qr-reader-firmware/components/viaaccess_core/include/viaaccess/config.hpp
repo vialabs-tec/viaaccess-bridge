@@ -16,6 +16,18 @@ inline constexpr int kDefaultHttpPort = 3710;
 inline constexpr int kDefaultDebounceMs = 2000;
 /** Default lock hold after UNLOCK / REX / redeem (matches Identity unlockHoldSeconds). */
 inline constexpr int kDefaultRelayPulseMs = 15000;
+/** Typical electric-strike pulse (solenoid unlock). */
+inline constexpr int kDefaultRelayStrikePulseMs = 500;
+/** Safety timeout when unlockMode is until_closed. */
+inline constexpr int kDefaultRelayUntilClosedMaxMs = 30000;
+
+/** Timed pulse for electric strike / short unlock. */
+inline constexpr const char* kRelayUnlockModePulse = "pulse";
+/** Timed hold for maglock / fail-safe (current default product behaviour). */
+inline constexpr const char* kRelayUnlockModeHold = "hold";
+/** Stay unlocked until the reed reports closed (max = pulseMs). */
+inline constexpr const char* kRelayUnlockModeUntilClosed = "until_closed";
+
 inline constexpr int kDefaultDoorDebounceMs = 50;
 inline constexpr int kDefaultDoorHeldOpenAfterMs = 60000;
 inline constexpr int kDefaultExitDebounceMs = 50;
@@ -66,12 +78,21 @@ inline constexpr int kDefaultBleBeaconTxPower = -59;
 // most opto-isolated boards; active_high is for bare transistor boards. Guessing
 // wrong energizes the coil at rest, which leaves the door unlocked instead of
 // failing closed, so the polarity is exposed in /setup.
+//
+// unlock_mode selects how long the coil stays active after authorization:
+// - pulse: short strike pulse (pulse_ms)
+// - hold: maglock-style timed unlock (pulse_ms, default 15 s)
+// - until_closed: stay unlocked until the door closes; pulse_ms is the max timeout
 struct RelayConfig {
   bool enabled = true;
   int gpio_pin = kDefaultRelayPin;
+  std::string unlock_mode = kRelayUnlockModeHold;
   int pulse_ms = kDefaultRelayPulseMs;
   bool active_high = false;
 };
+
+/** Empty / unknown unlock modes become hold. */
+std::string NormalizeRelayUnlockMode(const std::string& mode);
 
 // Status RGB. Default is the DevKitC-1 onboard WS2812 (one wire). Optional
 // KY-016 common-cathode module uses red/green/blue pins instead.

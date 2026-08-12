@@ -67,6 +67,7 @@ RuntimeConfig Parse(const std::string& json) {
   if (const cJSON* relay = Object(root, "relay")) {
     cfg.relay.enabled = GetBool(relay, "enabled", cfg.relay.enabled);
     cfg.relay.gpio_pin = GetInt(relay, "gpioPin", cfg.relay.gpio_pin);
+    cfg.relay.unlock_mode = GetString(relay, "unlockMode", cfg.relay.unlock_mode);
     cfg.relay.pulse_ms = GetInt(relay, "pulseMs", cfg.relay.pulse_ms);
     cfg.relay.active_high = GetBool(relay, "activeHigh", cfg.relay.active_high);
   }
@@ -169,6 +170,7 @@ std::string Serialize(const RuntimeConfig& cfg, bool include_secrets) {
   cJSON* relay = cJSON_AddObjectToObject(root, "relay");
   cJSON_AddBoolToObject(relay, "enabled", cfg.relay.enabled);
   cJSON_AddNumberToObject(relay, "gpioPin", cfg.relay.gpio_pin);
+  cJSON_AddStringToObject(relay, "unlockMode", cfg.relay.unlock_mode.c_str());
   cJSON_AddNumberToObject(relay, "pulseMs", cfg.relay.pulse_ms);
   cJSON_AddBoolToObject(relay, "activeHigh", cfg.relay.active_high);
 

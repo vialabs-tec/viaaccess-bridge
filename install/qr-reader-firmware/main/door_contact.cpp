@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "identity_client.hpp"
+#include "relay.hpp"
 #include "viaaccess/door_contact.hpp"
 
 namespace door_contact {
@@ -109,8 +110,11 @@ void Emit(const viaaccess::DoorContactStep& step) {
     // closes, independent of whether Identity accepted the event.
     if (door_kind == viaaccess::DoorKind::kHeldOpen) {
       buzzer::BeepHeldOpen();
+    } else if (door_kind == viaaccess::DoorKind::kOpened) {
+      relay::OnDoorOpen();
     } else if (door_kind == viaaccess::DoorKind::kClosed) {
       buzzer::Stop();
+      relay::OnDoorClosed();
     }
 
     const identity::Outcome outcome = identity::PostDoorContactEvent(cfg, kind);
@@ -247,6 +251,12 @@ std::string state() {
     return "";
   }
   return viaaccess::DoorStateString(g_engine.stable());
+}
+
+bool is_open() {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_config.enabled && g_ready &&
+         g_engine.stable() == viaaccess::DoorState::kOpen;
 }
 
 }  // namespace door_contact

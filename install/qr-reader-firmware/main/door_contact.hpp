@@ -26,5 +26,7 @@ bool simulated();
 bool ready();
 int gpio_pin();
 std::string state();
+/** True when the debounced reed is open (false if disabled / unknown). */
+bool is_open();
 
 }  // namespace door_contact

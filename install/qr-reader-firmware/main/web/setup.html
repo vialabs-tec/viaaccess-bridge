@@ -54,7 +54,7 @@
 
     <template id="wiring-fields">
           <fieldset>
-            <legend>Relé</legend>
+            <legend>Relé / trava</legend>
             <label class="check">
               <input name="relayEnabled" type="checkbox" checked />
               <span>Acionar relé GPIO após autorização</span>
@@ -62,9 +62,20 @@
             <label>GPIO pin
               <input name="relayGpioPin" type="number" value="10" min="1" />
             </label>
-            <label>Pulso (ms)
-              <input name="relayPulseMs" type="number" value="15000" min="100" />
+            <label>Tipo de trava
+              <select name="relayUnlockMode" id="relay-unlock-mode">
+                <option value="pulse">Fechadura elétrica (pulso curto)</option>
+                <option value="hold" selected>Eletroímã / manter aberta (tempo)</option>
+                <option value="until_closed">Manter aberta até fechar a porta</option>
+              </select>
             </label>
+            <label id="relay-pulse-label"><span id="relay-pulse-caption">Duração (ms)</span>
+              <input name="relayPulseMs" id="relay-pulse-ms" type="number" value="15000" min="100" />
+            </label>
+            <p id="relay-mode-hint" style="margin:0.5rem 0 0;font-size:0.75rem;color:#9aa7b5;line-height:1.4">
+              Eletroímã fail-safe: o relé fica acionado o tempo da passagem (padrão 15&nbsp;s).
+              O app e o Identity usam o mesmo valor como janela de unlock.
+            </p>
             <label class="check">
               <input name="relayActiveHigh" type="checkbox" />
               <span>Módulo aciona em nível alto</span>
@@ -256,6 +267,36 @@
     const wiringHost = document.querySelector('#wiring-form .wiring-host');
     wiringHost.appendChild(wiringFields.content.cloneNode(true));
 
+    const RELAY_MODE_DEFAULTS = { pulse: 500, hold: 15000, until_closed: 30000 };
+    const relayModeSelect = document.querySelector('#wiring-form [name="relayUnlockMode"]');
+    const relayPulseInput = document.querySelector('#wiring-form [name="relayPulseMs"]');
+    const relayPulseCaption = document.getElementById('relay-pulse-caption');
+    const relayModeHint = document.getElementById('relay-mode-hint');
+
+    function syncRelayModeUi(applyDefaultPulse) {
+      const mode = relayModeSelect ? relayModeSelect.value : 'hold';
+      const hints = {
+        pulse: 'Fechadura/strike: um pulso curto energiza o solenóide. Padrão 500&nbsp;ms.',
+        hold: 'Eletroímã fail-safe: o relé fica acionado o tempo da passagem (padrão 15&nbsp;s). O app e o Identity usam o mesmo valor como janela de unlock.',
+        until_closed: 'Mantém destravado até o reed fechar (abre → fecha). O valor é o tempo máximo de segurança se a porta não fechar. Requer sensor de porta ativo.',
+      };
+      const labels = {
+        pulse: 'Pulso (ms)',
+        hold: 'Duração (ms)',
+        until_closed: 'Tempo máximo (ms)',
+      };
+      if (relayModeHint) relayModeHint.innerHTML = hints[mode] || hints.hold;
+      if (relayPulseCaption) relayPulseCaption.textContent = labels[mode] || labels.hold;
+      if (applyDefaultPulse && relayPulseInput && RELAY_MODE_DEFAULTS[mode] != null) {
+        relayPulseInput.value = RELAY_MODE_DEFAULTS[mode];
+      }
+    }
+
+    if (relayModeSelect) {
+      relayModeSelect.addEventListener('change', () => syncRelayModeUi(true));
+      syncRelayModeUi(false);
+    }
+
     // Fill from the device once: the status poll runs every 5 s and must not
     // fight typing on the Fiação form.
     let hardwarePrefilled = false;
@@ -280,6 +321,10 @@
         const el = form.querySelector('[name="' + name + '"]');
         if (el) el.checked = hardware[name];
       });
+      if (typeof hardware.relayUnlockMode === 'string' && hardware.relayUnlockMode) {
+        const el = form.querySelector('[name="relayUnlockMode"]');
+        if (el) el.value = hardware.relayUnlockMode;
+      }
       if (typeof hardware.statusLedDriver === 'string') {
         const el = form.querySelector('[name="statusLedDriver"]');
         if (el) el.value = hardware.statusLedDriver;
@@ -289,6 +334,7 @@
           el.value = mdnsHostname;
         });
       }
+      syncRelayModeUi(false);
     }
 
     async function refreshStatus() {
@@ -355,10 +401,13 @@
     }
 
     function hardwarePayload(fd) {
+      const mode = String(fd.get('relayUnlockMode') || 'hold');
+      const fallbackPulse = RELAY_MODE_DEFAULTS[mode] || 15000;
       return {
         relayEnabled: fd.get('relayEnabled') === 'on',
         relayGpioPin: Number(fd.get('relayGpioPin') || 10),
-        relayPulseMs: Number(fd.get('relayPulseMs') || 15000),
+        relayUnlockMode: mode,
+        relayPulseMs: Number(fd.get('relayPulseMs') || fallbackPulse),
         relayActiveHigh: fd.get('relayActiveHigh') === 'on',
         doorContactEnabled: fd.get('doorContactEnabled') === 'on',
         doorContactGpioPin: Number(fd.get('doorContactGpioPin') || 11),

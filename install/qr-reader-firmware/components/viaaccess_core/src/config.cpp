@@ -49,6 +49,15 @@ std::string NormalizeBleBeaconUuid(const std::string& value) {
   return trimmed;
 }
 
+std::string NormalizeRelayUnlockMode(const std::string& mode) {
+  const std::string trimmed = ToLower(Trim(mode));
+  if (trimmed == kRelayUnlockModePulse || trimmed == kRelayUnlockModeHold ||
+      trimmed == kRelayUnlockModeUntilClosed) {
+    return trimmed;
+  }
+  return kRelayUnlockModeHold;
+}
+
 RuntimeConfig DefaultRuntimeConfig() { return RuntimeConfig{}; }
 
 RuntimeConfig Normalize(RuntimeConfig cfg) {
@@ -69,11 +78,18 @@ RuntimeConfig Normalize(RuntimeConfig cfg) {
     cfg.debounce_ms = kDefaultDebounceMs;
   }
 
-  if (cfg.relay.pulse_ms <= 0) {
-    cfg.relay.pulse_ms = kDefaultRelayPulseMs;
-  }
+  cfg.relay.unlock_mode = NormalizeRelayUnlockMode(cfg.relay.unlock_mode);
   if (cfg.relay.gpio_pin <= 0) {
     cfg.relay.gpio_pin = kDefaultRelayPin;
+  }
+  if (cfg.relay.pulse_ms <= 0) {
+    if (cfg.relay.unlock_mode == kRelayUnlockModePulse) {
+      cfg.relay.pulse_ms = kDefaultRelayStrikePulseMs;
+    } else if (cfg.relay.unlock_mode == kRelayUnlockModeUntilClosed) {
+      cfg.relay.pulse_ms = kDefaultRelayUntilClosedMaxMs;
+    } else {
+      cfg.relay.pulse_ms = kDefaultRelayPulseMs;
+    }
   }
 
   if (cfg.status_led.driver.empty() ||

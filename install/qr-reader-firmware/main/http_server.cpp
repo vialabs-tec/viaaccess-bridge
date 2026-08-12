@@ -188,6 +188,13 @@ bool ApplyHardwareOverrides(const cJSON* root, viaaccess::RuntimeConfig* cfg) {
     cfg->relay.gpio_pin = number;
     touched = true;
   }
+  {
+    const std::string mode = JsonString(root, "relayUnlockMode");
+    if (!mode.empty()) {
+      cfg->relay.unlock_mode = viaaccess::NormalizeRelayUnlockMode(mode);
+      touched = true;
+    }
+  }
   if (JsonInt(root, "relayPulseMs", &number) && number > 0) {
     cfg->relay.pulse_ms = number;
     touched = true;
@@ -433,6 +440,7 @@ esp_err_t HandleSetupStatus(httpd_req_t* req) {
   cJSON* hardware = cJSON_AddObjectToObject(root, "hardware");
   cJSON_AddBoolToObject(hardware, "relayEnabled", cfg.relay.enabled);
   cJSON_AddNumberToObject(hardware, "relayGpioPin", cfg.relay.gpio_pin);
+  cJSON_AddStringToObject(hardware, "relayUnlockMode", cfg.relay.unlock_mode.c_str());
   cJSON_AddNumberToObject(hardware, "relayPulseMs", cfg.relay.pulse_ms);
   cJSON_AddBoolToObject(hardware, "relayActiveHigh", cfg.relay.active_high);
   cJSON_AddBoolToObject(hardware, "relayAvailable", relay::available());
