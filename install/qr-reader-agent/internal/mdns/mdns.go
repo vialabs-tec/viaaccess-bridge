@@ -11,7 +11,7 @@ import (
 
 const (
 	// DefaultHostname is advertised as <name>.local on the LAN.
-	DefaultHostname = "viaaccess-qr"
+	DefaultHostname = "viaaccess"
 	serviceType     = "_http._tcp"
 	domain          = "local."
 )
@@ -29,7 +29,7 @@ func (c Config) Normalize() Config {
 	if strings.TrimSpace(c.Hostname) == "" {
 		c.Hostname = DefaultHostname
 	}
-	c.Hostname = SanitizeHostname(c.Hostname)
+	c.Hostname = migrateLegacyMdnsHostname(c.Hostname)
 	return c
 }
 
@@ -54,21 +54,33 @@ func SanitizeHostname(raw string) string {
 }
 
 // HostnameFromAccessPointSlug builds a LAN hostname from an access point slug
-// (e.g. entrada-principal → viaaccess-qr-entrada-principal) so multiple Pis
+// (e.g. entrada-principal → viaaccess-entrada-principal) so multiple Pis
 // on the same network get distinct .local names after claim.
 func HostnameFromAccessPointSlug(slug string) string {
 	s := SanitizeHostname(slug)
-	if s == DefaultHostname {
+	if s == DefaultHostname || s == "viaaccess-qr" {
 		return DefaultHostname
 	}
 	prefix := DefaultHostname + "-"
-	if s == DefaultHostname || strings.HasPrefix(s, prefix) {
+	if strings.HasPrefix(s, prefix) {
 		return s
 	}
 	return SanitizeHostname(prefix + s)
 }
 
-// Advertiser publishes viaaccess-qr.local (or custom host) pointing at this machine.
+func migrateLegacyMdnsHostname(hostname string) string {
+	s := SanitizeHostname(hostname)
+	if s == "viaaccess-qr" {
+		return DefaultHostname
+	}
+	const legacyPrefix = "viaaccess-qr-"
+	if strings.HasPrefix(s, legacyPrefix) {
+		return SanitizeHostname(DefaultHostname + "-" + strings.TrimPrefix(s, legacyPrefix))
+	}
+	return s
+}
+
+// Advertiser publishes viaaccess.local (or custom host) pointing at this machine.
 type Advertiser struct {
 	hostname string
 	port     int

@@ -7,6 +7,7 @@
 
 #include "app_state.hpp"
 #include "driver/gpio.h"
+#include "wifi_manager.hpp"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -224,7 +225,10 @@ esp_err_t ConfigureLocked(const viaaccess::StatusLedConfig& cfg) {
 void Loop(void* /*argument*/) {
   for (;;) {
     const viaaccess::OperationMode mode = app::State::Instance().operation_mode();
-    const viaaccess::LedPattern next = viaaccess::PatternForMode(mode);
+    // SoftAP up: show SETUP (blue blink) even if Identity just dropped. Red
+    // contingency while the technician is on viaaccess-setup looks like a fault.
+    const viaaccess::LedPattern next = viaaccess::PatternForMode(
+        wifi::portal_active() ? viaaccess::OperationMode::kSetup : mode);
 
     {
       std::lock_guard<std::mutex> lock(g_mutex);

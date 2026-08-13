@@ -83,25 +83,41 @@
     const list = document.getElementById('ssid-list');
     const ssidInput = document.querySelector('input[name="ssid"]');
     const msg = document.getElementById('msg');
+    let writesAllowed = true;
+    let pinLocked = false;
+    let pinLockPoll = null;
 
     async function refreshStatus() {
       try {
         const res = await fetch('/api/setup');
         const data = await res.json();
         const net = data.network || {};
-        const writesAllowed = data.setupWritesAllowed !== false;
+        writesAllowed = data.setupWritesAllowed !== false;
+        const lockSec = Number(data.pinLockRemainingSec || 0);
+        pinLocked = lockSec > 0;
+        if (pinLocked && !pinLockPoll) {
+          pinLockPoll = setInterval(refreshStatus, 1000);
+        } else if (!pinLocked && pinLockPoll) {
+          clearInterval(pinLockPoll);
+          pinLockPoll = null;
+        }
         const pinField = document.getElementById('pin-field');
         const setupPinField = document.getElementById('setup-pin-field');
         if (pinField) pinField.hidden = !data.pinRequired || !writesAllowed;
         if (setupPinField) setupPinField.hidden = !data.pinSetupRequired || !writesAllowed;
         const submit = document.querySelector('#wifi-form button[type="submit"]');
-        if (submit) submit.disabled = !writesAllowed;
+        if (submit) submit.disabled = !writesAllowed || pinLocked;
         if (!writesAllowed) {
           lockbar.hidden = false;
           lockbar.innerHTML =
             '<strong>Troca de rede bloqueada nesta conexão.</strong> Três cliques no BOOT, ' +
-            'conecte em <code>viaaccess-qr-setup</code> e abra ' +
-            '<code>http://192.168.4.1:3710/wifi</code>.';
+            'conecte em <code>viaaccess-setup</code>; o login da rede deve abrir o setup. ' +
+            'Se não abrir, use <code>http://192.168.4.1/wifi</code>.';
+        } else if (pinLocked) {
+          lockbar.hidden = false;
+          lockbar.innerHTML =
+            '<strong>PIN bloqueado.</strong> Cinco tentativas erradas. Aguarde ' +
+            lockSec + '&nbsp;s para tentar de novo.';
         } else {
           lockbar.hidden = true;
           lockbar.textContent = '';
@@ -166,6 +182,7 @@
         if (!res.ok || !data.ok) {
           msg.textContent = data.error || 'Falha ao salvar a rede.';
           msg.className = 'msg err';
+          refreshStatus();
           return;
         }
         // The SoftAP drops as soon as the station associates, so this page may
@@ -176,7 +193,7 @@
         msg.textContent = String(err);
         msg.className = 'msg err';
       } finally {
-        btn.disabled = false;
+        btn.disabled = !writesAllowed || pinLocked;
       }
     });
 

@@ -8,11 +8,15 @@
 namespace viaaccess {
 
 // SanitizeHostname returns a DNS-label-safe host without the .local suffix,
-// falling back to viaaccess-qr when nothing usable remains.
+// falling back to viaaccess when nothing usable remains.
 std::string SanitizeHostname(const std::string& raw);
 
-// HostnameFromAccessPointSlug builds viaaccess-qr-{slug} so multiple readers on
+// HostnameFromAccessPointSlug builds viaaccess-{slug} so multiple readers on
 // the same network get distinct .local names after claim.
 std::string HostnameFromAccessPointSlug(const std::string& slug);
+
+// MigrateLegacyMdnsHostname rewrites stored viaaccess-qr / viaaccess-qr-{slug}
+// labels to viaaccess / viaaccess-{slug}.
+std::string MigrateLegacyMdnsHostname(const std::string& hostname);
 
 }  // namespace viaaccess

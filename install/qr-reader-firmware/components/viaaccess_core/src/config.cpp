@@ -143,7 +143,7 @@ RuntimeConfig Normalize(RuntimeConfig cfg) {
     cfg.exit_button.cooldown_ms = kDefaultExitCooldownMs;
   }
 
-  cfg.mdns.hostname = SanitizeHostname(cfg.mdns.hostname);
+  cfg.mdns.hostname = MigrateLegacyMdnsHostname(cfg.mdns.hostname);
 
   if (cfg.contingency.online_redeem_timeout_ms <= 0) {
     cfg.contingency.online_redeem_timeout_ms = kDefaultOnlineRedeemTimeoutMs;

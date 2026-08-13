@@ -100,7 +100,34 @@ void FactoryResetAndReboot() {
   esp_restart();
 }
 
+void DismissPortalFromBoot() {
+  ESP_LOGW(kTag, "BOOT: dismissing SoftAP portal");
+  if (wifi::DismissPortal()) {
+    buzzer::BeepSuccess();
+    return;
+  }
+  buzzer::BeepFail();
+}
+
+bool ClickWhilePortal(viaaccess::ServiceGesture gesture) {
+  switch (gesture) {
+    case viaaccess::ServiceGesture::kSingleClick:
+    case viaaccess::ServiceGesture::kDoubleClick:
+    case viaaccess::ServiceGesture::kTripleClick:
+      return wifi::portal_active();
+    default:
+      return false;
+  }
+}
+
 void HandleGesture(viaaccess::ServiceGesture gesture) {
+  // Any click burst while the setup AP is up and the station is online: leave
+  // provisioning. Hold stays factory-reset so a long press cannot be mistaken
+  // for "just close the portal".
+  if (ClickWhilePortal(gesture) && wifi::connected()) {
+    DismissPortalFromBoot();
+    return;
+  }
   switch (gesture) {
     case viaaccess::ServiceGesture::kNone:
       break;
@@ -161,7 +188,8 @@ esp_err_t Start() {
   // Stack sized for factory reset (save + restart) and REX notify.
   xTaskCreate(WatcherLoop, "va_boot_btn", 4096, nullptr, 3, nullptr);
   ESP_LOGI(kTag,
-           "BOOT GPIO0 gestures: 1=status 2=REX(if sim) 3=SoftAP hold5s=factory-reset");
+           "BOOT GPIO0 gestures: 1=status 2=REX(if sim) 3=SoftAP "
+           "(any click dismisses SoftAP if STA up) hold5s=factory-reset");
   return ESP_OK;
 }
 

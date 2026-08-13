@@ -210,7 +210,7 @@ func (h *Handler) HandleProvision(w http.ResponseWriter, r *http.Request) {
 }
 
 // applyMDNSHostname sets the LAN hostname from an advanced override, else from
-// the access point slug (viaaccess-qr-{slug}), else keeps the factory default.
+// the access point slug (viaaccess-{slug}), else keeps the factory default.
 func applyMDNSHostname(cfg appconfig.RuntimeConfig, override string) appconfig.RuntimeConfig {
 	if strings.TrimSpace(override) != "" {
 		cfg.MDNS.Hostname = strings.TrimSpace(override)

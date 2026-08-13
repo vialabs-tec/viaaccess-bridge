@@ -6,6 +6,7 @@
 namespace {
 
 using viaaccess::HostnameFromAccessPointSlug;
+using viaaccess::MigrateLegacyMdnsHostname;
 using viaaccess::SanitizeHostname;
 
 const std::string kDefault = viaaccess::kDefaultMdnsHostname;
@@ -28,12 +29,24 @@ VA_TEST(SanitizeHostnameCapsLabelLength) {
 VA_TEST(HostnameDerivedFromAccessPointSlug) {
   CHECK_EQ(HostnameFromAccessPointSlug(""), kDefault);
   CHECK_EQ(HostnameFromAccessPointSlug("entrada-principal"),
-           std::string("viaaccess-qr-entrada-principal"));
+           std::string("viaaccess-entrada-principal"));
   CHECK_EQ(HostnameFromAccessPointSlug("Entrada_Principal"),
-           std::string("viaaccess-qr-entrada-principal"));
+           std::string("viaaccess-entrada-principal"));
   CHECK_EQ(HostnameFromAccessPointSlug("viaaccess-qr"), kDefault);
+  CHECK_EQ(HostnameFromAccessPointSlug("viaaccess"), kDefault);
   CHECK_EQ(HostnameFromAccessPointSlug("viaaccess-qr-porta"),
            std::string("viaaccess-qr-porta"));
+  CHECK_EQ(HostnameFromAccessPointSlug("viaaccess-porta"),
+           std::string("viaaccess-porta"));
+}
+
+VA_TEST(MigrateLegacyMdnsHostnameRewritesQrPrefix) {
+  CHECK_EQ(MigrateLegacyMdnsHostname("viaaccess-qr"), kDefault);
+  CHECK_EQ(MigrateLegacyMdnsHostname("viaaccess-qr.local"), kDefault);
+  CHECK_EQ(MigrateLegacyMdnsHostname("viaaccess-qr-entrada-principal"),
+           std::string("viaaccess-entrada-principal"));
+  CHECK_EQ(MigrateLegacyMdnsHostname("viaaccess-entrada"),
+           std::string("viaaccess-entrada"));
 }
 
 }  // namespace

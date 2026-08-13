@@ -54,7 +54,12 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 CONFIG_FREERTOS_HZ=1000
-CONFIG_LWIP_LOCAL_HOSTNAME="viaaccess-qr"
+CONFIG_LWIP_LOCAL_HOSTNAME="viaaccess"
+
+# Three HTTP listeners (:80 captive, :3710 scripts, :443 curl -k) plus DNS and
+# Identity TLS. The IDF default of 10 sockets lets :3710 start and starves :80,
+# so phones see "no internet" and never get the captive-portal sheet.
+CONFIG_LWIP_MAX_SOCKETS=24
 
 # NimBLE for Apple iBeacon advertising (Identity bleBeacon / member proximity).
 # Broadcaster-only: the appliance does not scan or act as a GATT central.

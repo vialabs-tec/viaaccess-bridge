@@ -22,9 +22,9 @@ func TestIsBridgeAuthFailure(t *testing.T) {
 
 func TestSetMdnsHostnameHeader(t *testing.T) {
 	req, _ := http.NewRequest(http.MethodGet, "http://example", nil)
-	setMdnsHostnameHeader(req, "ViaAccess-QR-Entrada.local")
+	setMdnsHostnameHeader(req, "ViaAccess-Entrada.local")
 	got := req.Header.Get("X-ViaAccess-Mdns-Hostname")
-	if got != "viaaccess-qr-entrada" {
+	if got != "viaaccess-entrada" {
 		t.Fatalf("got %q", got)
 	}
 }

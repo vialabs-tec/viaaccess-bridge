@@ -205,9 +205,9 @@ past `heldOpenAfterMs` (60 s by default). `/health` reports
 Homologation without the reed: **Fiação** → mark *Simular*, then
 
 ```bash
-curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/door-contact/sim \
+curl -s -X POST http://viaaccess-<slug>.local:3710/api/door-contact/sim \
   -H 'Content-Type: application/json' -d '{"state":"open"}'
-curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/door-contact/sim \
+curl -s -X POST http://viaaccess-<slug>.local:3710/api/door-contact/sim \
   -H 'Content-Type: application/json' -d '{"state":"closed"}'
 ```
 
@@ -228,10 +228,10 @@ the pulse. Boot seeds without unlocking, so a stuck button does not open the doo
 Homologation without the button: **Fiação** → *Simular* on the REX block, then
 
 ```bash
-curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/exit-button/sim \
+curl -s -X POST http://viaaccess-<slug>.local:3710/api/exit-button/sim \
   -H 'Content-Type: application/json' -d '{"state":"pressed"}'
 # release so the next press can arm again
-curl -s -X POST http://viaaccess-qr-<slug>.local:3710/api/exit-button/sim \
+curl -s -X POST http://viaaccess-<slug>.local:3710/api/exit-button/sim \
   -H 'Content-Type: application/json' -d '{"state":"idle"}'
 ```
 
@@ -242,10 +242,10 @@ not touched during reset). Gestures are exclusive in time:
 
 | Gesture | Action |
 |---|---|
-| 1 click | Announce posture: success beep = `ONLINE`, fail beeps = setup / contingency / stale |
-| 2 clicks | Synthetic REX — only when **Fiação** has REX enabled **and** Simular checked |
-| 3 clicks | Force SoftAP `viaaccess-qr-setup` immediately (join and open `http://192.168.4.1:3710/setup` or `/wifi`) without clearing the device key. Required to change setup after the reader is provisioned (LAN/STA writes are rejected). SoftAP auto-closes in ~10 min if STA stays up. |
-| Hold 2 s | Warning cue (keep holding) |
+| 1 click | Announce posture: success beep = `ONLINE`, fail beeps = setup / contingency / stale. **While SoftAP is up and the station is online, any click burst (1/2/3) dismisses the portal** and returns to normal operation. |
+| 2 clicks | Synthetic REX — only when **Fiação** has REX enabled **and** Simular checked (ignored while SoftAP is up; that click closes the portal instead) |
+| 3 clicks | Force SoftAP `viaaccess-setup` immediately. Join it; the phone “Sign in to network” sheet should open setup. Fallback: `http://192.168.4.1/setup` (no port). Required to change setup after the reader is provisioned (LAN/STA writes are rejected). SoftAP closes after a successful `/setup` save, a BOOT click, or `/wifi` once STA gets an IP. 10 min TTL only if setup is abandoned. |
+| Hold 2 s | Warning cue (keep holding). Not used to leave setup — too close to factory reset. |
 | Hold 5 s | Factory reset: clear Identity credentials **and** Wi-Fi, then reboot into SoftAP |
 
 REX (GPIO 12 and BOOT) is **off by default**. Enable it under `/setup` → **Fiação**
@@ -354,7 +354,8 @@ main/                       ESP-IDF application
   wifi_manager.cpp          SoftAP portal, station
   clock_service.cpp         DS3231 at boot, SNTP once online, clock trust
   ds3231_driver.cpp         I2C transport for the battery-backed clock
-  http_server.cpp           local HTTP API on port 3710 (+ optional HTTPS :443)
+  http_server.cpp           local HTTP API on :80 (captive) + :3710 (+ optional HTTPS :443)
+  captive_dns.cpp           wildcard DNS while SoftAP is up
   identity_client.cpp       redeem, claim, policy, device-config, commands
   scan_service.cpp          the single passage pipeline
   qr_reader.cpp             EP8280L over UART
@@ -456,14 +457,16 @@ counterpart because the Pi gets its date from the distribution.
 
 ## First boot
 
-1. The appliance raises an open SoftAP named `viaaccess-qr-setup`.
-2. Join it and open `http://192.168.4.1:3710/wifi`, pick the network and submit.
-   The portal drops as soon as the station associates, which is the success
-   signal; the appliance is then reachable at
-   `http://viaaccess-qr.local:3710/setup` on the LAN (optional `https://…/` on port 443 with `curl -k`).
+1. The appliance raises an open SoftAP named `viaaccess-setup`.
+2. Join it. The phone should show a “Sign in to network” / captive-portal sheet
+   and open setup. If it does not, open `http://192.168.4.1/wifi` (port 80, no
+   `:3710`). Pick the network and submit. The portal drops as soon as the
+   station associates, which is the success signal; the appliance is then
+   reachable at `http://viaaccess.local/setup` on the LAN (scripts still use
+   `:3710`; optional `https://…/` on port 443 with `curl -k`).
 3. Open `/setup` and paste the provisioning URL or the `clm_` token from the
    dashboard. Provisioning derives the LAN hostname from the access point slug
-   (`viaaccess-qr-{slug}.local`).
+   (`viaaccess-{slug}.local`).
 
 If the network is wrong or the password changed, five failed association attempts
 bring the SoftAP back so no serial cable is needed. Three clicks on the DevKit
@@ -504,7 +507,7 @@ on load, once, so a refresh does not fight typing.
 | `GET /health` | Posture, policy freshness, reader stats, last scan |
 | `POST /scan` | Passage from an integrator or from homologation |
 | `GET /setup`, `GET /wifi` | Technician pages |
-| `GET /api/setup` | Current state for the pages (never returns the device key or setup PIN). Includes `pinRequired` / `pinSetupRequired`. |
+| `GET /api/setup` | Current state for the pages (never returns the device key or setup PIN). Includes `pinRequired` / `pinSetupRequired` / `pinLockRemainingSec`. |
 | `POST /api/setup` | Manual configuration with an `idb_` device key |
 | `POST /api/setup/provision` | Zero-touch claim with a `clm_` token (saves after claim; no second Identity ping) |
 | `POST /api/setup/hardware` | Wiring only, no credentials and no Identity round-trip |
@@ -528,7 +531,7 @@ is set, so it is safe against a door in service:
 READER_URL=http://192.168.4.1:3710 ./scripts/homologate.sh
 
 # Provisioned reader on the LAN, including a real passage and the debounce window
-READER_URL=http://viaaccess-qr.local:3710 \
+READER_URL=http://viaaccess.local:3710 \
 QR_URL='<QR dinâmico do app do associado>' \
   ./scripts/homologate.sh
 ```
@@ -653,14 +656,19 @@ and a long `Location` header. The OTA client follows redirects explicitly and us
 
 After claim, mutating `/api/setup*` requires:
 
-1. **Setup PIN** (from Identity claim or set on the manual path).
+1. **Setup PIN** (from Identity claim or set on the manual path). Five wrong
+   guesses pause further attempts for 60 seconds.
 2. **SoftAP portal up** (BOOT 3-click / STA failures / first boot). SoftAP forced
-   while STA is up is **held** until TTL (~10 min) so GOT_IP does not kick the phone.
-3. **URL on SoftAP** — `http://192.168.4.1:3710/setup` on Wi‑Fi `viaaccess-qr-setup`
-   (`Host: 192.168.4.1`). SoftAP uses **HTTP on purpose**: mobile browsers often
-   hard-fail self-signed HTTPS on captive SoftAP networks (“site unavailable”).
-   Optional HTTPS on `:443` (`https://192.168.4.1/setup`, `curl -k`) for LAN/scripts.
-   `*.local` / STA IP stay **read-only** even while SoftAP is active.
+   while STA is up is **held** so GOT_IP does not kick the phone mid-form.
+   A successful `/setup` save closes it in ~1.5 s. A BOOT click (1, 2 or 3) while
+   SoftAP is up and STA is online dismisses it immediately. 10 min TTL is only
+   the fallback if nobody saves and nobody clicks.
+3. **URL on SoftAP** — join `viaaccess-setup`. Captive DNS + HTTP `:80` should
+   open the setup sheet. Fallback `http://192.168.4.1/setup` (`Host: 192.168.4.1`).
+   SoftAP uses **HTTP on purpose**: mobile browsers often hard-fail self-signed
+   HTTPS on captive SoftAP networks (“site unavailable”). Scripts/homologate keep
+   `:3710`. Optional HTTPS on `:443` (`https://192.168.4.1/setup`, `curl -k`) for
+   LAN/scripts. `*.local` / STA IP stay **read-only** even while SoftAP is active.
 
 ## Next evolution
 

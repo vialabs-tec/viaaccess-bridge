@@ -56,11 +56,27 @@ std::string SanitizeHostname(const std::string& raw) {
 
 std::string HostnameFromAccessPointSlug(const std::string& slug) {
   const std::string s = SanitizeHostname(slug);
+  // Factory default (current and pre-rename) must not become viaaccess-viaaccess-qr.
+  if (s == kDefaultMdnsHostname || s == "viaaccess-qr") {
+    return kDefaultMdnsHostname;
+  }
   const std::string prefix = std::string(kDefaultMdnsHostname) + "-";
-  if (s == kDefaultMdnsHostname || StartsWith(s, prefix)) {
+  if (StartsWith(s, prefix)) {
     return s;
   }
   return SanitizeHostname(prefix + s);
+}
+
+std::string MigrateLegacyMdnsHostname(const std::string& hostname) {
+  const std::string s = SanitizeHostname(hostname);
+  if (s == "viaaccess-qr") {
+    return kDefaultMdnsHostname;
+  }
+  constexpr const char* kLegacyPrefix = "viaaccess-qr-";
+  if (StartsWith(s, kLegacyPrefix)) {
+    return SanitizeHostname(std::string(kDefaultMdnsHostname) + "-" + s.substr(13));
+  }
+  return s;
 }
 
 }  // namespace viaaccess

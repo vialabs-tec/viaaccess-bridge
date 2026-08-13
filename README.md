@@ -22,14 +22,14 @@ O agent Go em [install/qr-reader-agent/](install/qr-reader-agent/README.md) (Ras
 | | ESP32-S3 (suportado) |
 |---|---|
 | Leitor de QR | UART TTL 9600 (ex. EP8280L) ou `POST /scan` |
-| Rede na primeira vez | SoftAP `viaaccess-qr-setup` → `/wifi` |
+| Rede na primeira vez | SoftAP `viaaccess-setup` → `/wifi` |
 | Mapa de GPIO | relé 10, porta 11, REX 12, LED 4/5/6 |
 | Relógio | SNTP; DS3231 opcional para hora confiável sem rede |
 | Contingência offline | Implementada (inclui `after_hours`) |
 | OTA de frota | App image via comando `UPDATE` (`BRIDGE_OTA_*`) |
 
 Provisionamento: cole a URL de claim (`clm_…`) do admin do Identity em
-`http://viaaccess-qr.local:3710/setup`.
+`http://viaaccess.local:3710/setup`.
 
 Imagem Docker:
 

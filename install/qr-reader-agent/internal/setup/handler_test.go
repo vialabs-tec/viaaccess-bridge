@@ -65,7 +65,7 @@ func TestApplyMDNSHostnameFromSlug(t *testing.T) {
 	cfg := appconfig.DefaultRuntimeConfig()
 	cfg.AccessPointSlug = "entrada-principal"
 	got := applyMDNSHostname(cfg, "")
-	if got.MDNS.Hostname != "viaaccess-qr-entrada-principal" {
+	if got.MDNS.Hostname != "viaaccess-entrada-principal" {
 		t.Fatalf("hostname=%q", got.MDNS.Hostname)
 	}
 }
@@ -73,8 +73,8 @@ func TestApplyMDNSHostnameFromSlug(t *testing.T) {
 func TestApplyMDNSHostnameOverride(t *testing.T) {
 	cfg := appconfig.DefaultRuntimeConfig()
 	cfg.AccessPointSlug = "entrada-principal"
-	got := applyMDNSHostname(cfg, "viaaccess-qr-entrada-2")
-	if got.MDNS.Hostname != "viaaccess-qr-entrada-2" {
+	got := applyMDNSHostname(cfg, "viaaccess-entrada-2")
+	if got.MDNS.Hostname != "viaaccess-entrada-2" {
 		t.Fatalf("hostname=%q", got.MDNS.Hostname)
 	}
 }
@@ -114,7 +114,7 @@ func TestHandleProvisionSetsMDNSFromSlug(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if saved.MDNS.Hostname != "viaaccess-qr-entrada-principal" {
+	if saved.MDNS.Hostname != "viaaccess-entrada-principal" {
 		t.Fatalf("mdns hostname=%q", saved.MDNS.Hostname)
 	}
 }

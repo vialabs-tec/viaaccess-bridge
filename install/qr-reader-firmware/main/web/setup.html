@@ -58,7 +58,7 @@
   <main>
     <h1>ViaAccess QR Reader</h1>
     <p>Provisionamento zero-touch: cole o claim do admin. GPIO/relé usam o mapa de fábrica.</p>
-    <p class="hint-url">Prefira <code id="hint-url">http://viaaccess-qr.local:3710/setup</code> (mesma Wi‑Fi). Se não resolver, use o IP mostrado abaixo.</p>
+    <p class="hint-url">Prefira <code id="hint-url">http://viaaccess.local/setup</code> (mesma Wi‑Fi). Se não resolver, use o IP mostrado abaixo.</p>
 
     <div id="netbar" class="netbar">Verificando rede…</div>
     <div id="lockbar" class="lockbar" hidden></div>
@@ -202,8 +202,8 @@
             host do admin, alcançável desta rede.</span>
         </label>
         <label>Hostname .local (opcional)
-          <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
-          <span class="field-hint">Vazio: usa o slug do ponto (<code>viaaccess-qr-{slug}</code>). Só
+          <input name="mdnsHostname" placeholder="viaaccess-entrada-2" autocomplete="off" />
+          <span class="field-hint">Vazio: usa o slug do ponto (<code>viaaccess-{slug}</code>). Só
             preciso se houver um segundo leitor no mesmo ponto.</span>
         </label>
         <div class="factory">
@@ -234,8 +234,8 @@
           <input name="accessPointSlug" placeholder="entrada-principal" />
         </label>
         <label>Hostname .local (opcional)
-          <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
-          <span class="field-hint">Vazio: usa o slug do ponto (<code>viaaccess-qr-{slug}</code>). Só
+          <input name="mdnsHostname" placeholder="viaaccess-entrada-2" autocomplete="off" />
+          <span class="field-hint">Vazio: usa o slug do ponto (<code>viaaccess-{slug}</code>). Só
             preciso se houver um segundo leitor no mesmo ponto.</span>
         </label>
         <div class="factory">
@@ -273,7 +273,7 @@
           Relé GPIO 10 · Porta GPIO 11 · REX GPIO 12 (opcional) · Buzzer GPIO 7 · LED WS2812 GPIO 38 · UART RX 17 / TX 18 · RTC SDA 8 / SCL 9
         </div>
         <label>Hostname .local (opcional)
-          <input name="mdnsHostname" placeholder="viaaccess-qr-entrada-2" autocomplete="off" />
+          <input name="mdnsHostname" placeholder="viaaccess-entrada-2" autocomplete="off" />
           <span class="field-hint">Vazio: mantém o hostname atual (ou o derivado do slug).</span>
         </label>
         <div class="wiring-host"></div>
@@ -303,6 +303,8 @@
     let pinSetupRequired = false;
     let setupRequired = true;
     let setupWritesAllowed = true;
+    let pinLocked = false;
+    let pinLockPoll = null;
 
     // Wiring lives only on the Fiação tab (one form, one clone of the template).
     const wiringFields = document.getElementById('wiring-fields');
@@ -390,6 +392,14 @@
         pinSetupRequired = Boolean(data.pinSetupRequired);
         setupRequired = Boolean(data.setupRequired);
         setupWritesAllowed = data.setupWritesAllowed !== false;
+        const lockSec = Number(data.pinLockRemainingSec || 0);
+        pinLocked = lockSec > 0;
+        if (pinLocked && !pinLockPoll) {
+          pinLockPoll = setInterval(refreshStatus, 1000);
+        } else if (!pinLocked && pinLockPoll) {
+          clearInterval(pinLockPoll);
+          pinLockPoll = null;
+        }
         // Existing PIN: show auth field. Legacy without PIN: show establish field.
         // Manual first provision: always show establish field on that tab.
         pinFields.forEach((field) => { field.hidden = !pinRequired || !setupWritesAllowed; });
@@ -399,7 +409,7 @@
           field.hidden = !(show && setupWritesAllowed);
         });
         document.querySelectorAll('.actions button[type="submit"]').forEach((btn) => {
-          btn.disabled = !setupWritesAllowed;
+          btn.disabled = !setupWritesAllowed || pinLocked;
         });
         if (!setupWritesAllowed) {
           lockbar.hidden = false;
@@ -409,14 +419,24 @@
           if (net.portalActive && !net.viaSoftAp) {
             lockbar.innerHTML =
               '<strong>SoftAP ativo, mas você abriu pela LAN (<code>.local</code>).</strong> ' +
-              'Esta página é só leitura. Conecte em <code>viaaccess-qr-setup</code> e abra ' +
-              '<code>http://192.168.4.1:3710/setup</code> para alterar (com o PIN).';
+              'Esta página é só leitura. Conecte em <code>viaaccess-setup</code>; ' +
+              'o login da rede deve abrir o setup. Se não abrir, use ' +
+              '<code>http://192.168.4.1/setup</code> para alterar (com o PIN).';
           } else {
             lockbar.innerHTML =
               '<strong>Alterações bloqueadas.</strong> Depois de provisionado, ative o SoftAP com ' +
-              '<strong>3 cliques no BOOT</strong>, conecte em <code>viaaccess-qr-setup</code> e abra ' +
-              '<code>http://192.168.4.1:3710/setup</code> (com o PIN). O portal fecha sozinho em ~10&nbsp;min.';
+              '<strong>3 cliques no BOOT</strong>, conecte em <code>viaaccess-setup</code>; ' +
+              'o login da rede deve abrir o setup. Se não abrir, use ' +
+              '<code>http://192.168.4.1/setup</code> (com o PIN). Depois de salvar, o portal fecha sozinho.';
           }
+        } else if (pinLocked) {
+          lockbar.hidden = false;
+          lockbar.style.borderColor = '#92400e';
+          lockbar.style.background = '#1a1408';
+          lockbar.style.color = '#fbbf24';
+          lockbar.innerHTML =
+            '<strong>PIN bloqueado.</strong> Cinco tentativas erradas. Aguarde ' +
+            lockSec + '&nbsp;s para tentar de novo.';
         } else if (net.portalActive && net.viaSoftAp) {
           lockbar.hidden = false;
           lockbar.style.borderColor = '#166534';
@@ -424,7 +444,8 @@
           lockbar.style.color = '#4ade80';
           lockbar.innerHTML =
             '<strong>Modo setup ativo (SoftAP).</strong> Pode alterar com o PIN. ' +
-            'O portal fecha em ~10&nbsp;min.';
+            'Pode alterar com o PIN. Depois de salvar, o portal fecha. ' +
+            'Para cancelar sem mudar nada, um clique no BOOT.';
         } else {
           lockbar.hidden = true;
           lockbar.textContent = '';
@@ -432,8 +453,7 @@
           lockbar.style.background = '';
           lockbar.style.color = '';
         }
-        hintUrl.textContent = 'http://' + (data.mdnsHostname || 'viaaccess-qr') +
-          '.local:' + (data.httpPort || 3710) + '/setup';
+        hintUrl.textContent = 'http://' + (data.mdnsHostname || 'viaaccess') + '.local/setup';
         if (net.connected) {
           netbar.className = 'netbar';
           netbar.innerHTML = '<strong>Rede:</strong> ' + (net.ssid || '—') + ' · IP ' + (net.ip || '—') +
@@ -534,6 +554,7 @@
           if (!res.ok || !data.ok) {
             msg.textContent = data.error || 'Falha na operação.';
             msg.className = 'msg err';
+            refreshStatus();
             return;
           }
           msg.textContent = data.message || 'Concluído.';
@@ -543,7 +564,7 @@
           msg.textContent = String(err);
           msg.className = 'msg err';
         } finally {
-          btn.disabled = false;
+          btn.disabled = !setupWritesAllowed || pinLocked;
         }
       });
     }

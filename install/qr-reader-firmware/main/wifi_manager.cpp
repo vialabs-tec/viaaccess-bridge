@@ -1,11 +1,13 @@
 #include "wifi_manager.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <set>
 
 #include "app_state.hpp"
+#include "captive_dns.hpp"
 #include "clock_service.hpp"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -13,6 +15,7 @@
 #include "esp_wifi.h"
 #include "esp_timer.h"
 #include "lwip/ip4_addr.h"
+#include "lwip/sockets.h"
 #include "viaaccess/strings.hpp"
 
 namespace wifi {
@@ -25,8 +28,11 @@ constexpr const char* kTag = "wifi";
 constexpr int kFailuresBeforePortal = 5;
 constexpr int kMaxScanRecords = 24;
 // SoftAP forced while STA is still online auto-closes so the open portal does
-// not linger on APSTA forever.
+// not linger on APSTA forever. Successful /setup closes it in ~1.5 s instead.
 constexpr int kForcedPortalTtlMs = 10 * 60 * 1000;
+constexpr int kClosePortalAfterSetupMs = 1500;
+// DHCP option 114 (RFC 8910). Pointer must stay valid for the DHCP server life.
+constexpr const char kCaptivePortalUri[] = "http://192.168.4.1";
 
 std::mutex g_mutex;
 esp_netif_t* g_sta_netif = nullptr;
@@ -36,11 +42,12 @@ std::string g_ip;
 bool g_connected = false;
 bool g_ap_active = false;
 // ForcePortal hold: STA GOT_IP must not tear SoftAP down while the technician
-// is still on viaaccess-qr-setup (TTL clears the hold).
+// is still on viaaccess-setup (TTL clears the hold).
 bool g_portal_hold = false;
 int g_failures = 0;
 esp_timer_handle_t g_reconnect_timer = nullptr;
 esp_timer_handle_t g_portal_ttl_timer = nullptr;
+esp_timer_handle_t g_close_portal_timer = nullptr;
 
 void PortalTtlFired(void* /*argument*/);
 
@@ -125,6 +132,7 @@ void PortalTtlFired(void* /*argument*/) {
   const esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
   if (err == ESP_OK) {
     g_ap_active = false;
+    captive_dns::Stop();
     PublishPhase(app::WifiPhase::kConnected);
   }
 }
@@ -144,8 +152,10 @@ esp_err_t SetApMode(bool enable) {
   ESP_LOGI(kTag, "SoftAP %s", enable ? "up" : "down");
   if (enable) {
     SchedulePortalTtlIfNeeded();
+    captive_dns::Start();
   } else {
     StopPortalTtlTimer();
+    captive_dns::Stop();
   }
   return ESP_OK;
 }
@@ -250,8 +260,18 @@ esp_err_t Start(const viaaccess::WifiConfig& cfg) {
     PublishPhase(ssid.empty() ? app::WifiPhase::kProvisioning : app::WifiPhase::kConnecting);
   }
 
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_stop(g_ap_netif));
+  const esp_err_t captive_opt = esp_netif_dhcps_option(
+      g_ap_netif, ESP_NETIF_OP_SET, ESP_NETIF_CAPTIVEPORTAL_URI,
+      const_cast<char*>(kCaptivePortalUri), sizeof(kCaptivePortalUri) - 1);
+  if (captive_opt != ESP_OK) {
+    ESP_LOGW(kTag, "DHCP captive URI: %s", esp_err_to_name(captive_opt));
+  }
+  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(g_ap_netif));
+
   ESP_ERROR_CHECK(esp_wifi_start());
-  ESP_LOGI(kTag, "portal ready at %s (http://192.168.4.1:%d/setup)", kSetupApSsid, 3710);
+  captive_dns::Start();
+  ESP_LOGI(kTag, "portal ready at %s (join Wi-Fi; http://192.168.4.1/setup)", kSetupApSsid);
   if (ssid.empty()) {
     ESP_LOGW(kTag, "no station credentials yet, waiting for the setup portal");
   }
@@ -371,18 +391,45 @@ bool host_is_softap(const std::string& host_header) {
   return host == SoftApHostAddress();
 }
 
-bool local_setup_writes_allowed(bool device_configured, const std::string& host_header) {
+bool peer_is_softap_client(int sockfd) {
+  if (sockfd < 0) {
+    return false;
+  }
+  struct sockaddr_storage addr{};
+  socklen_t len = sizeof(addr);
+  if (getpeername(sockfd, reinterpret_cast<struct sockaddr*>(&addr), &len) != 0) {
+    return false;
+  }
+  uint32_t ip = 0;
+  if (addr.ss_family == AF_INET) {
+    ip = ntohl(reinterpret_cast<struct sockaddr_in*>(&addr)->sin_addr.s_addr);
+  } else if (addr.ss_family == AF_INET6) {
+    const auto* a6 = reinterpret_cast<struct sockaddr_in6*>(&addr);
+    const uint8_t* b = a6->sin6_addr.s6_addr;
+    if (b[10] == 0xff && b[11] == 0xff) {
+      ip = (static_cast<uint32_t>(b[12]) << 24) | (static_cast<uint32_t>(b[13]) << 16) |
+           (static_cast<uint32_t>(b[14]) << 8) | b[15];
+    }
+  }
+  return (ip & 0xFFFFFF00u) == 0xC0A80400u;
+}
+
+bool local_setup_writes_allowed(bool device_configured, const std::string& host_header,
+                                int sockfd) {
   if (!device_configured) {
     // First Wi‑Fi + claim still happen on the LAN after SoftAP drops.
     return true;
   }
-  // BOOT 3-click opens SoftAP; browsers must use http://192.168.4.1:3710/…
-  // so *.local / STA IP stay read-only during the portal window. SoftAP phones
-  // use HTTP (self-signed HTTPS is blocked by many mobile browsers on SoftAP).
-  return portal_active() && host_is_softap(host_header);
+  // BOOT 3-click opens SoftAP. LAN *.local / STA IP stay read-only. Captive
+  // probes use Host names like captive.apple.com; those still count when the
+  // TCP peer is on 192.168.4.0/24.
+  return portal_active() && (host_is_softap(host_header) || peer_is_softap_client(sockfd));
 }
 
 esp_err_t ForcePortal() {
+  if (g_close_portal_timer != nullptr) {
+    esp_timer_stop(g_close_portal_timer);
+  }
   {
     std::lock_guard<std::mutex> lock(g_mutex);
     g_portal_hold = true;
@@ -402,10 +449,77 @@ esp_err_t ForcePortal() {
     SchedulePortalTtlIfNeeded();
   }
   ESP_LOGW(kTag,
-           "SoftAP forced: join %s and open http://192.168.4.1:3710/setup "
-           "(writes only via SoftAP; auto-closes in %d min if STA stays up)",
+           "SoftAP forced: join %s — captive portal or http://192.168.4.1/setup "
+           "(writes only via SoftAP; closes after /setup save, or in %d min if abandoned)",
            kSetupApSsid, kForcedPortalTtlMs / 60000);
   return ESP_OK;
+}
+
+void ReleasePortalHold() {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  g_portal_hold = false;
+  StopPortalTtlTimer();
+}
+
+bool DismissPortal() {
+  if (g_close_portal_timer != nullptr) {
+    esp_timer_stop(g_close_portal_timer);
+  }
+  bool close_ap = false;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_portal_hold = false;
+    StopPortalTtlTimer();
+    if (g_ap_active && g_connected) {
+      close_ap = true;
+    }
+  }
+  if (!close_ap) {
+    return false;
+  }
+  const esp_err_t err = SetApMode(false);
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "could not close SoftAP: %s", esp_err_to_name(err));
+    return false;
+  }
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (g_connected) {
+      PublishPhase(app::WifiPhase::kConnected);
+    }
+  }
+  ESP_LOGI(kTag, "SoftAP dismissed");
+  return true;
+}
+
+void ClosePortalTimerFired(void* /*argument*/) {
+  if (!DismissPortal()) {
+    ESP_LOGI(kTag, "setup done; SoftAP kept (station still offline)");
+  }
+}
+
+void ClosePortalAfterSetup() {
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_portal_hold = false;
+    StopPortalTtlTimer();
+  }
+  if (g_close_portal_timer == nullptr) {
+    const esp_timer_create_args_t args = {
+        .callback = ClosePortalTimerFired,
+        .arg = nullptr,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "softap_close",
+        .skip_unhandled_events = true,
+    };
+    if (esp_timer_create(&args, &g_close_portal_timer) != ESP_OK) {
+      ClosePortalTimerFired(nullptr);
+      return;
+    }
+  }
+  esp_timer_stop(g_close_portal_timer);
+  esp_timer_start_once(g_close_portal_timer,
+                       static_cast<uint64_t>(kClosePortalAfterSetupMs) * 1000);
 }
 
 }  // namespace wifi

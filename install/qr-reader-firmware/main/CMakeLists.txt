@@ -4,6 +4,7 @@ idf_component_register(
     "app_state.cpp"
     "ble_beacon.cpp"
     "buzzer.cpp"
+    "captive_dns.cpp"
     "clock_service.cpp"
     "config_json.cpp"
     "contingency_store.cpp"
@@ -42,6 +43,7 @@ idf_component_register(
     esp-tls
     json
     led_strip
+    lwip
     nvs_flash
     nvs_sec_provider
 )

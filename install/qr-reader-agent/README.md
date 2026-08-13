@@ -38,11 +38,11 @@ CI: workflow `.github/workflows/qr-reader-agent.yml` executa `go test` e `go bui
 Sem `config.json` com `"configured": true`, o agent sobe em **modo setup** e anuncia mDNS na LAN:
 
 ```text
-http://viaaccess-qr.local:3710/setup
+http://viaaccess.local:3710/setup
 ```
 
 Se `.local` não resolver no celular/notebook, use `http://<ip>:3710/setup`. No claim, o hostname
-passa a ser `viaaccess-qr-{slug-do-ponto}` (ex. `viaaccess-qr-entrada-principal.local`). Override
+passa a ser `viaaccess-{slug-do-ponto}` (ex. `viaaccess-entrada-principal.local`). Override
 opcional em Configuração avançada (segundo leitor no mesmo ponto) ou `MDNS_HOSTNAME` antes do claim.
 
 Config padrão em produção: `/etc/viaaccess-qr-reader/config.json` (permissões `0600`).
@@ -75,7 +75,7 @@ Cada token `clm_…` é **uso único**: provisiona um appliance. Para outro leit
 **2. Appliance**
 
 1. Conecte o Pi/leitor na rede (mesma LAN do técnico), com a fiação padrão do produto.
-2. Abra `http://viaaccess-qr.local:3710/setup` (fallback: `http://<ip>:3710/setup`).
+2. Abra `http://viaaccess.local:3710/setup` (fallback: `http://<ip>:3710/setup`).
 3. Aba **Provisionar (QR)** → cole a **URL completa** ou só o token `clm_…`.
    - Se colar só `clm_…`, informe também a URL do Identity.
 4. **Provisionar** (não é preciso abrir GPIO). Fiação diferente: **Configuração avançada**.
@@ -294,7 +294,7 @@ Variáveis em `/etc/viaaccess-qr-reader/env` (opcional, sobrescrevem JSON):
 | `RELAY_ENABLED` | `true` para GPIO |
 | `RELAY_GPIO_PIN` | Padrão `17` |
 | `MDNS_ENABLED` | `true` (padrão) anuncia `hostname.local` na LAN |
-| `MDNS_HOSTNAME` | Padrão `viaaccess-qr` → `http://viaaccess-qr.local:3710/setup` |
+| `MDNS_HOSTNAME` | Padrão `viaaccess` → `http://viaaccess.local:3710/setup` |
 | `STATUS_LED_ENABLED` | `true` para módulo KY-016 (SETUP / ONLINE / SYNC_STALE) |
 | `STATUS_LED_RED_PIN` / `GREEN` / `BLUE` | Canais R/G/B do KY-016 em `gpiochip0` (padrões 22 / 27 / 23) |
 | `STDIN_SCANNER` | `true` com `--stdin` no systemd para leitor USB |

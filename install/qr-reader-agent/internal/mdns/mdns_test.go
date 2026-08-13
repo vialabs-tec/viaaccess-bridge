@@ -28,14 +28,30 @@ func TestConfigNormalizeDefault(t *testing.T) {
 func TestHostnameFromAccessPointSlug(t *testing.T) {
 	cases := map[string]string{
 		"":                   DefaultHostname,
-		"entrada-principal":  "viaaccess-qr-entrada-principal",
-		"Entrada_Principal":  "viaaccess-qr-entrada-principal",
+		"entrada-principal":  "viaaccess-entrada-principal",
+		"Entrada_Principal":  "viaaccess-entrada-principal",
 		"viaaccess-qr":       DefaultHostname,
+		"viaaccess":          DefaultHostname,
 		"viaaccess-qr-porta": "viaaccess-qr-porta",
+		"viaaccess-porta":    "viaaccess-porta",
 	}
 	for in, want := range cases {
 		if got := HostnameFromAccessPointSlug(in); got != want {
 			t.Fatalf("HostnameFromAccessPointSlug(%q)=%q want %q", in, got, want)
+		}
+	}
+}
+
+func TestMigrateLegacyMdnsHostname(t *testing.T) {
+	cases := map[string]string{
+		"viaaccess-qr":                    DefaultHostname,
+		"viaaccess-qr.local":              DefaultHostname,
+		"viaaccess-qr-entrada-principal":  "viaaccess-entrada-principal",
+		"viaaccess-entrada":               "viaaccess-entrada",
+	}
+	for in, want := range cases {
+		if got := migrateLegacyMdnsHostname(in); got != want {
+			t.Fatalf("migrateLegacyMdnsHostname(%q)=%q want %q", in, got, want)
 		}
 	}
 }

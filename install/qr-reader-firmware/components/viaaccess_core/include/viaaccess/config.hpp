@@ -34,7 +34,7 @@ inline constexpr int kDefaultExitDebounceMs = 50;
 inline constexpr int kDefaultExitCooldownMs = 3000;
 inline constexpr int kDefaultOnlineRedeemTimeoutMs = 3000;
 inline constexpr int kDefaultMaxPolicyStaleHours = 168;
-inline constexpr const char* kDefaultMdnsHostname = "viaaccess-qr";
+inline constexpr const char* kDefaultMdnsHostname = "viaaccess";
 inline constexpr const char* kDefaultHttpHost = "0.0.0.0";
 inline constexpr const char* kDeviceKeyPrefix = "idb_";
 

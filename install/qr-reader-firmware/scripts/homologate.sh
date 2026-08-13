@@ -5,11 +5,11 @@
 # this product: Wi-Fi phase, UART reader stats and the SoftAP provisioning step.
 # Read-only unless QR_URL is set, so it is safe to run against a door in service.
 #
-#   READER_URL=http://viaaccess-qr.local:3710 ./scripts/homologate.sh
+#   READER_URL=http://viaaccess.local:3710 ./scripts/homologate.sh
 #   QR_URL='https://…' ./scripts/homologate.sh   # also exercises a real passage
 set -euo pipefail
 
-READER_URL="${READER_URL:-http://viaaccess-qr.local:3710}"
+READER_URL="${READER_URL:-http://viaaccess.local:3710}"
 IDENTITY_URL="${IDENTITY_URL:-}"
 
 # Optional HTTPS :443 uses a factory self-signed cert.
@@ -52,8 +52,8 @@ echo "== 1. Alcance e postura =="
 if ! health="$(curl "${CURL_INSECURE[@]}" -sf --max-time 10 "$READER_URL/health")"; then
   echo "  FAIL  leitor inacessível em $READER_URL"
   echo ""
-  echo "Se o leitor ainda não tem Wi-Fi, entre na rede viaaccess-qr-setup e use"
-  echo "READER_URL=http://192.168.4.1:3710"
+  echo "Se o leitor ainda não tem Wi-Fi, entre na rede viaaccess-setup e use"
+  echo "READER_URL=http://192.168.4.1:3710  (ou http://192.168.4.1 na porta 80)"
   exit 1
 fi
 

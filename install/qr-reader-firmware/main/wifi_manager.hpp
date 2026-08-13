@@ -15,7 +15,7 @@
 namespace wifi {
 
 // SoftAP SSID raised while the appliance has no usable station connection.
-inline constexpr const char* kSetupApSsid = "viaaccess-qr-setup";
+inline constexpr const char* kSetupApSsid = "viaaccess-setup";
 
 struct ScanEntry {
   std::string ssid;
@@ -33,8 +33,22 @@ esp_err_t ApplyCredentials(const std::string& ssid, const std::string& password)
 std::vector<ScanEntry> Scan();
 
 // ForcePortal raises SoftAP immediately so a technician can join
-// viaaccess-qr-setup without waiting for station failures.
+// viaaccess-setup without waiting for station failures.
 esp_err_t ForcePortal();
+
+// ClosePortalAfterSetup drops SoftAP ~1.5 s after a successful /setup save so
+// the HTTP 200 still reaches the phone. No-op if the station is still offline
+// (recovery SoftAP must stay up). 10 min TTL remains only if setup is abandoned.
+void ClosePortalAfterSetup();
+
+// DismissPortal closes SoftAP immediately when the station is online (BOOT
+// abort, or the delayed close timer). Returns true if the portal actually went
+// down. Keeps SoftAP if STA is offline so recovery is not bricked.
+bool DismissPortal();
+
+// ReleasePortalHold lets the next STA GOT_IP close SoftAP (Wi-Fi credentials
+// just saved; do not tear the portal down before the station associates).
+void ReleasePortalHold();
 
 bool connected();
 
@@ -48,8 +62,13 @@ bool portal_active();
 // Browser tabs on *.local stay read-only even while SoftAP is up (APSTA).
 bool host_is_softap(const std::string& host_header);
 
+// True when the TCP peer is on the SoftAP subnet (192.168.4.0/24). Captive
+// probes arrive with Host: captive.apple.com etc.; the client IP still counts.
+bool peer_is_softap_client(int sockfd);
+
 // Local setup POSTs: always allowed before provision; after provision only when
-// SoftAP portal is up AND the request Host is 192.168.4.1 (not *.local / STA IP).
-bool local_setup_writes_allowed(bool device_configured, const std::string& host_header);
+// SoftAP is up AND (Host is 192.168.4.1 or the peer is on the SoftAP subnet).
+bool local_setup_writes_allowed(bool device_configured, const std::string& host_header,
+                                int sockfd = -1);
 
 }  // namespace wifi
