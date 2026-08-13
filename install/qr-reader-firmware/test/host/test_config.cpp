@@ -174,6 +174,7 @@ VA_TEST(ResetToSetupClearsCredentialsAndKeepsWifi) {
   cfg.identity_url = "https://identity.example";
   cfg.wifi.ssid = "portaria";
   cfg.wifi.password = "segredo";
+  cfg.setup_pin = "123456";
 
   cfg = ResetToSetup(cfg);
 
@@ -182,6 +183,7 @@ VA_TEST(ResetToSetupClearsCredentialsAndKeepsWifi) {
   CHECK_EQ(cfg.device_id, std::string(""));
   CHECK_EQ(cfg.provisioned_at, std::string(""));
   CHECK_EQ(cfg.access_point_slug, std::string(""));
+  CHECK_EQ(cfg.setup_pin, std::string(""));
   CHECK_EQ(cfg.identity_url, std::string("https://identity.example"));
   CHECK_EQ(cfg.wifi.ssid, std::string("portaria"));
   CHECK_EQ(cfg.wifi.password, std::string("segredo"));

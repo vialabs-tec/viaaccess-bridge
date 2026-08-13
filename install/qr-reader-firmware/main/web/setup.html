@@ -57,7 +57,7 @@
 <body>
   <main>
     <h1>ViaAccess QR Reader</h1>
-    <p>
+    <p id="lead">
       Nesta rede <code>viaaccess-setup</code>, configure o Wi‑Fi do prédio e cole o claim
       na mesma folha. O portal só fecha depois do provisionamento. GPIO/relé usam o mapa
       de fábrica.
@@ -309,6 +309,16 @@
     let setupWritesAllowed = true;
     let pinLocked = false;
     let pinLockPoll = null;
+    let didPickDefaultTab = false;
+
+    function activateTab(name) {
+      document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+      const tab = document.querySelector('.tab[data-tab="' + name + '"]');
+      const panel = document.getElementById('panel-' + name);
+      if (tab) tab.classList.add('active');
+      if (panel) panel.classList.add('active');
+    }
 
     // Wiring lives only on the Fiação tab (one form, one clone of the template).
     const wiringFields = document.getElementById('wiring-fields');
@@ -396,6 +406,19 @@
         pinSetupRequired = Boolean(data.pinSetupRequired);
         setupRequired = Boolean(data.setupRequired);
         setupWritesAllowed = data.setupWritesAllowed !== false;
+        const lead = document.getElementById('lead');
+        if (lead) {
+          lead.innerHTML = setupRequired
+            ? 'Nesta rede <code>viaaccess-setup</code>, configure o Wi‑Fi do prédio e cole o claim ' +
+              'na mesma folha. O portal só fecha depois do provisionamento. GPIO/relé usam o mapa ' +
+              'de fábrica.'
+            : 'Leitor já provisionado. Fiação, claim e PIN nesta folha; ' +
+              '<a href="/wifi">trocar a rede Wi‑Fi</a> é outra página. PIN obrigatório para salvar.';
+        }
+        if (!didPickDefaultTab) {
+          didPickDefaultTab = true;
+          if (!setupRequired) activateTab('wiring');
+        }
         const lockSec = Number(data.pinLockRemainingSec || 0);
         pinLocked = lockSec > 0;
         if (pinLocked && !pinLockPoll) {
@@ -494,12 +517,7 @@
     setInterval(refreshStatus, 5000);
 
     document.querySelectorAll('.tab').forEach((tab) => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
-        document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
-      });
+      tab.addEventListener('click', () => activateTab(tab.dataset.tab));
     });
 
     const claimInput = document.querySelector('#provision-form [name="claimInput"]');

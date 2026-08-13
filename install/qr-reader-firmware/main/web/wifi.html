@@ -11,6 +11,7 @@
     h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
     p { color: #9aa7b5; font-size: 0.9rem; }
     a { color: #60a5fa; }
+    .hint-url { margin-top: 0.75rem; }
     [hidden] { display: none !important; }
     label { display: block; margin-top: 1rem; font-size: 0.85rem; }
     .field-hint { display: block; margin-top: 0.35rem; font-size: 0.75rem; color: #9aa7b5; line-height: 1.4; }
@@ -48,6 +49,7 @@
       Uma etapa: rede 2,4 GHz <strong>e</strong> o claim do Identity nesta mesma
       folha. Fique em <code>viaaccess-setup</code> até o LED sair do azul.
     </p>
+    <p class="hint-url"><a href="/setup">Fiação, claim e PIN</a></p>
 
     <div id="netbar" class="netbar">Verificando rede…</div>
     <div id="lockbar" class="lockbar" hidden></div>
@@ -113,9 +115,10 @@
         }
         const pinField = document.getElementById('pin-field');
         const setupPinField = document.getElementById('setup-pin-field');
-        if (pinField) pinField.hidden = !data.pinRequired || !writesAllowed;
-        if (setupPinField) setupPinField.hidden = !data.pinSetupRequired || !writesAllowed;
         const firstBoot = Boolean(data.setupRequired);
+        // First boot: PIN comes from the Identity claim, not this form.
+        if (pinField) pinField.hidden = firstBoot || !data.pinRequired || !writesAllowed;
+        if (setupPinField) setupPinField.hidden = firstBoot || !data.pinSetupRequired || !writesAllowed;
         claimInput.required = firstBoot;
         claimInput.closest('label').hidden = !firstBoot;
         if (!firstBoot) {
@@ -144,7 +147,8 @@
         }
         if (net.connected) {
           netbar.className = 'netbar';
-          netbar.innerHTML = '<strong>Conectado a</strong> ' + (net.ssid || '—') + ' · IP ' + (net.ip || '—');
+          netbar.innerHTML = '<strong>Conectado a</strong> ' + (net.ssid || '—') + ' · IP ' + (net.ip || '—') +
+            (firstBoot ? '' : ' · <a href="/setup">setup / fiação</a>');
         } else {
           netbar.className = 'netbar offline';
           netbar.innerHTML = '<strong>Ainda sem conexão.</strong> Rede configurada: ' + (net.ssid || 'nenhuma');

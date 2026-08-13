@@ -58,6 +58,7 @@ std::atomic<bool> g_beacon_task_pending{false};
 void PortalTtlFired(void* /*argument*/);
 
 esp_err_t SetApMode(bool enable);
+esp_err_t ConfigureAp();
 
 // Captive sheet needs wildcard DNS for the whole SoftAP life. Sharing the STA
 // uplink (NAPT) makes iOS treat the network as "no internet" and skip the sheet.
@@ -189,6 +190,12 @@ void ScheduleBeaconStart() {
   }
 }
 
+void PauseBeacon() {
+  viaaccess::BleBeaconConfig off;
+  ESP_ERROR_CHECK_WITHOUT_ABORT(ble_beacon::ApplyConfig(off));
+  g_beacon_task_pending = false;
+}
+
 esp_err_t SetApMode(bool enable) {
   // First boot must keep viaaccess-setup until the claim is on disk. BOOT
   // status clicks, the 10 min TTL and a failed save after Identity consumed
@@ -206,6 +213,10 @@ esp_err_t SetApMode(bool enable) {
     }
     return ESP_OK;
   }
+  if (enable) {
+    // iBeacon + SoftAP on this chip wedges the radio; stop ADV first.
+    PauseBeacon();
+  }
   const esp_err_t err = esp_wifi_set_mode(enable ? WIFI_MODE_APSTA : WIFI_MODE_STA);
   if (err != ESP_OK) {
     return err;
@@ -214,8 +225,13 @@ esp_err_t SetApMode(bool enable) {
   ESP_LOGI(kTag, "SoftAP %s", enable ? "up" : "down");
   if (enable) {
     SchedulePortalTtlIfNeeded();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(ConfigureAp());
+    // Provisioned boots never start the AP DHCP server; without this the phone
+    // associates to viaaccess-setup and never gets 192.168.4.1.
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(g_ap_netif));
   } else {
     StopPortalTtlTimer();
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_stop(g_ap_netif));
   }
   RefreshPortalNetworking();
   if (!enable) {

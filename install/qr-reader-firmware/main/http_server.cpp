@@ -563,10 +563,13 @@ esp_err_t HandleWifiPage(httpd_req_t* req) {
 // Serve the portal as 200 HTML. iOS captive detection ignores empty 302s and
 // treats them as "no internet"; a real page (not Apple's Success body) opens
 // the sign-in sheet. Android generate_204 with a body does the same.
-// Always wifi.html: first boot is Wi-Fi + claim in one submit; ForcePortal is
-// a network change. /setup stays available if the technician opens it.
+// First boot: wifi.html (building Wi-Fi + claim in one submit). After claim,
+// ForcePortal lands on setup.html so Fiação / PIN / claim are on the sheet.
 esp_err_t ServePortalPage(httpd_req_t* req) {
   httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+  if (app::State::Instance().configured()) {
+    return HandleSetupPage(req);
+  }
   return HandleWifiPage(req);
 }
 
@@ -581,7 +584,8 @@ esp_err_t HandleSetupStatus(httpd_req_t* req) {
   const viaaccess::RuntimeConfig cfg = app::State::Instance().config();
   cJSON* root = cJSON_CreateObject();
   cJSON_AddBoolToObject(root, "setupRequired", !cfg.configured);
-  cJSON_AddBoolToObject(root, "pinRequired", !viaaccess::Trim(cfg.setup_pin).empty());
+  cJSON_AddBoolToObject(root, "pinRequired",
+                        cfg.configured && !viaaccess::Trim(cfg.setup_pin).empty());
   // Legacy / misconfigured units that are online without a PIN must set one
   // before any further local mutation.
   cJSON_AddBoolToObject(root, "pinSetupRequired",

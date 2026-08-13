@@ -209,6 +209,7 @@ RuntimeConfig ResetToSetup(RuntimeConfig cfg) {
   cfg.device_id.clear();
   cfg.provisioned_at.clear();
   cfg.access_point_slug.clear();
+  cfg.setup_pin.clear();
   return Normalize(std::move(cfg));
 }
 

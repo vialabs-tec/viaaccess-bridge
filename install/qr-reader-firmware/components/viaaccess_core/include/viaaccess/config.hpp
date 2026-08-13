@@ -268,9 +268,10 @@ RuntimeConfig Normalize(RuntimeConfig cfg);
 // scans, otherwise a technician-facing reason (Portuguese, shown in /setup).
 std::string ValidateOperational(const RuntimeConfig& cfg);
 
-// ResetToSetup clears device credentials so the appliance can be provisioned
-// again after Identity revokes the key. Wi-Fi credentials survive: the
-// technician should not have to rejoin the network to reprovision.
+// ResetToSetup clears device credentials and the local setup PIN so the
+// appliance can be provisioned again after Identity revokes the key. Wi-Fi
+// credentials survive: the technician should not have to rejoin the network
+// to reprovision. Factory reset also wipes Wi-Fi.
 RuntimeConfig ResetToSetup(RuntimeConfig cfg);
 
 // ApplyRemoteDeviceConfig overlays Identity device-config onto local settings.
