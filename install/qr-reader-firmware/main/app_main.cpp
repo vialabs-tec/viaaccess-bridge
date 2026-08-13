@@ -102,6 +102,10 @@ extern "C" void app_main() {
   app::State& state = app::State::Instance();
   state.Init(storage::LoadConfig());
   const viaaccess::RuntimeConfig boot = state.config();
+  ESP_LOGI(kTag, "config loaded: configured=%d ssid=%s key=%d identity=%s",
+           boot.configured ? 1 : 0, boot.wifi.ssid.c_str(),
+           boot.device_key.empty() ? 0 : 1,
+           boot.identity_url.empty() ? "-" : boot.identity_url.c_str());
 
   // Restoring the last snapshot before the first sync keeps /health honest about
   // policy age after a reboot and lets CONTINGENCY authorize offline immediately.
@@ -135,14 +139,12 @@ extern "C" void app_main() {
     ESP_ERROR_CHECK_WITHOUT_ABORT(buzzer::ApplyConfig(cfg.buzzer));
     ESP_ERROR_CHECK_WITHOUT_ABORT(qr_reader::ApplyConfig(cfg.qr_reader));
     ESP_ERROR_CHECK_WITHOUT_ABORT(http_server::ApplyPort(cfg.http_port));
-    ESP_ERROR_CHECK_WITHOUT_ABORT(ble_beacon::ApplyConfig(cfg.ble_beacon));
+    if (!wifi::portal_active()) {
+      ESP_ERROR_CHECK_WITHOUT_ABORT(ble_beacon::ApplyConfig(cfg.ble_beacon));
+    }
   });
   state.set_on_mdns_hostname_changed(ApplyHostname);
-  state.set_on_became_operational([] {
-    sync_task::Start();
-    ESP_ERROR_CHECK_WITHOUT_ABORT(
-        ble_beacon::ApplyConfig(app::State::Instance().config().ble_beacon));
-  });
+  state.set_on_became_operational([] { sync_task::Start(); });
 
   ESP_ERROR_CHECK(wifi::Start(boot.wifi));
   StartMdns(boot.mdns, boot.http_port);
@@ -151,7 +153,6 @@ extern "C" void app_main() {
 
   if (boot.configured) {
     sync_task::Start();
-    ESP_ERROR_CHECK_WITHOUT_ABORT(ble_beacon::ApplyConfig(boot.ble_beacon));
   } else {
     ESP_LOGW(kTag, "not provisioned: connect to the %s network and open /setup",
              wifi::kSetupApSsid);

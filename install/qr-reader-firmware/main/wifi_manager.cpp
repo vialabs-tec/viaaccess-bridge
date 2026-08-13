@@ -1,21 +1,26 @@
 #include "wifi_manager.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <set>
 
 #include "app_state.hpp"
+#include "ble_beacon.hpp"
 #include "captive_dns.hpp"
 #include "clock_service.hpp"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
-#include "esp_wifi.h"
 #include "esp_timer.h"
+#include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/sockets.h"
+#include "sync_task.hpp"
 #include "viaaccess/strings.hpp"
 
 namespace wifi {
@@ -48,8 +53,26 @@ int g_failures = 0;
 esp_timer_handle_t g_reconnect_timer = nullptr;
 esp_timer_handle_t g_portal_ttl_timer = nullptr;
 esp_timer_handle_t g_close_portal_timer = nullptr;
+std::atomic<bool> g_beacon_task_pending{false};
 
 void PortalTtlFired(void* /*argument*/);
+
+esp_err_t SetApMode(bool enable);
+
+// Captive sheet needs wildcard DNS for the whole SoftAP life. Sharing the STA
+// uplink (NAPT) makes iOS treat the network as "no internet" and skip the sheet.
+void RefreshPortalNetworking() {
+  bool ap = false;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    ap = g_ap_active;
+  }
+  if (ap) {
+    captive_dns::Start();
+  } else {
+    captive_dns::Stop();
+  }
+}
 
 void ReconnectTimerFired(void* /*argument*/) { esp_wifi_connect(); }
 
@@ -119,25 +142,64 @@ void SchedulePortalTtlIfNeeded() {
 }
 
 void PortalTtlFired(void* /*argument*/) {
-  std::lock_guard<std::mutex> lock(g_mutex);
-  g_portal_hold = false;
-  if (!g_ap_active) {
-    return;
+  bool close_ap = false;
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_portal_hold = false;
+    if (g_ap_active && g_connected) {
+      close_ap = true;
+    }
   }
-  if (!g_connected) {
-    // Still offline — keep SoftAP for recovery.
+  if (!close_ap) {
     return;
   }
   ESP_LOGW(kTag, "SoftAP TTL elapsed; closing portal (STA still connected)");
-  const esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
-  if (err == ESP_OK) {
-    g_ap_active = false;
-    captive_dns::Stop();
-    PublishPhase(app::WifiPhase::kConnected);
+  if (SetApMode(false) == ESP_OK) {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (g_connected) {
+      PublishPhase(app::WifiPhase::kConnected);
+    }
+  }
+}
+
+// NimBLE + SoftAP together OOMs this chip (BLE_INIT malloc → interrupt WDT).
+// Never init NimBLE on sys_evt: that task overflows (stack canary) on GOT_IP.
+void BeaconStartTask(void* /*argument*/) {
+  if (app::State::Instance().configured() && !g_ap_active) {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(
+        ble_beacon::ApplyConfig(app::State::Instance().config().ble_beacon));
+  }
+  g_beacon_task_pending = false;
+  vTaskDelete(nullptr);
+}
+
+void ScheduleBeaconStart() {
+  if (!app::State::Instance().configured() || g_ap_active) {
+    return;
+  }
+  bool expected = false;
+  if (!g_beacon_task_pending.compare_exchange_strong(expected, true)) {
+    return;
+  }
+  const BaseType_t ok =
+      xTaskCreate(BeaconStartTask, "va_ble", 8192, nullptr, 5, nullptr);
+  if (ok != pdPASS) {
+    g_beacon_task_pending = false;
+    ESP_LOGW(kTag, "cannot start BLE task");
   }
 }
 
 esp_err_t SetApMode(bool enable) {
+  // First boot must keep viaaccess-setup until the claim is on disk. BOOT
+  // status clicks, the 10 min TTL and a failed save after Identity consumed
+  // the token all used to drop SoftAP and leave the LED stuck on SETUP.
+  if (!enable && !app::State::Instance().configured()) {
+    ESP_LOGW(kTag, "keeping SoftAP; appliance is still unprovisioned");
+    if (g_ap_active) {
+      return ESP_OK;
+    }
+    enable = true;
+  }
   if (enable == g_ap_active) {
     if (enable) {
       SchedulePortalTtlIfNeeded();
@@ -152,10 +214,12 @@ esp_err_t SetApMode(bool enable) {
   ESP_LOGI(kTag, "SoftAP %s", enable ? "up" : "down");
   if (enable) {
     SchedulePortalTtlIfNeeded();
-    captive_dns::Start();
   } else {
     StopPortalTtlTimer();
-    captive_dns::Stop();
+  }
+  RefreshPortalNetworking();
+  if (!enable) {
+    ScheduleBeaconStart();
   }
   return ESP_OK;
 }
@@ -167,6 +231,7 @@ void OnWifiEvent(void* /*arg*/, esp_event_base_t base, int32_t id, void* data) {
   }
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     const auto* event = static_cast<wifi_event_sta_disconnected_t*>(data);
+    bool open_portal = false;
     {
       std::lock_guard<std::mutex> lock(g_mutex);
       g_connected = false;
@@ -175,12 +240,16 @@ void OnWifiEvent(void* /*arg*/, esp_event_base_t base, int32_t id, void* data) {
       ESP_LOGW(kTag, "disconnected from %s (reason %d, attempt %d)", g_ssid.c_str(),
                event != nullptr ? event->reason : -1, g_failures);
       if (g_failures >= kFailuresBeforePortal) {
-        SetApMode(true);
+        open_portal = true;
         PublishPhase(app::WifiPhase::kProvisioning);
       } else {
         PublishPhase(app::WifiPhase::kConnecting);
       }
     }
+    if (open_portal) {
+      SetApMode(true);
+    }
+    RefreshPortalNetworking();
     // A fixed pause keeps a wrong password from hammering the radio while still
     // recovering quickly from a router reboot.
     ScheduleReconnect(2000);
@@ -190,25 +259,37 @@ void OnWifiEvent(void* /*arg*/, esp_event_base_t base, int32_t id, void* data) {
     const auto* event = static_cast<ip_event_got_ip_t*>(data);
     char buffer[16] = {};
     esp_ip4addr_ntoa(&event->ip_info.ip, buffer, sizeof(buffer));
+    bool close_ap = false;
     {
       std::lock_guard<std::mutex> lock(g_mutex);
       g_connected = true;
       g_failures = 0;
       g_ip = buffer;
       ESP_LOGI(kTag, "connected to %s with ip %s", g_ssid.c_str(), g_ip.c_str());
-      // ForcePortal hold keeps SoftAP up for the technician even while STA is
-      // online. Otherwise close SoftAP once the station is usable so a bad
-      // password never locks recovery out permanently.
-      if (g_portal_hold) {
+      // Keep SoftAP while the technician is still commissioning: ForcePortal
+      // hold, or first boot (not configured yet) so Wi-Fi + claim share one
+      // viaaccess-setup session. Otherwise close once the station is usable.
+      const bool keep_portal = g_portal_hold || !app::State::Instance().configured();
+      if (keep_portal) {
+        g_portal_hold = true;
         SchedulePortalTtlIfNeeded();
         PublishPhase(app::WifiPhase::kProvisioning);
       } else {
-        SetApMode(false);
+        close_ap = g_ap_active;
         PublishPhase(app::WifiPhase::kConnected);
       }
     }
+    if (close_ap) {
+      SetApMode(false);
+    } else {
+      RefreshPortalNetworking();
+      ScheduleBeaconStart();
+    }
     // Outside the lock: the clock service touches app::State and the I2C bus.
     clock_service::OnNetworkUp();
+    if (app::State::Instance().configured()) {
+      sync_task::KickNow();
+    }
   }
 }
 
@@ -241,8 +322,13 @@ esp_err_t Start(const viaaccess::WifiConfig& cfg) {
   ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                                      &OnWifiEvent, nullptr, nullptr));
   ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+
+  const bool portal = !app::State::Instance().configured();
+  // AP config requires APSTA even if this boot will drop to STA. ForcePortal
+  // later reuses that stored SoftAP config.
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
   g_ap_active = true;
+  g_portal_hold = portal;
   ESP_ERROR_CHECK(ConfigureAp());
 
   const std::string ssid = viaaccess::Trim(cfg.ssid);
@@ -267,11 +353,19 @@ esp_err_t Start(const viaaccess::WifiConfig& cfg) {
   if (captive_opt != ESP_OK) {
     ESP_LOGW(kTag, "DHCP captive URI: %s", esp_err_to_name(captive_opt));
   }
-  ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(g_ap_netif));
+  if (portal) {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_start(g_ap_netif));
+  } else {
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    g_ap_active = false;
+    g_portal_hold = false;
+  }
 
   ESP_ERROR_CHECK(esp_wifi_start());
-  captive_dns::Start();
-  ESP_LOGI(kTag, "portal ready at %s (join Wi-Fi; http://192.168.4.1/setup)", kSetupApSsid);
+  if (portal) {
+    captive_dns::Start();
+    ESP_LOGI(kTag, "portal ready at %s (join Wi-Fi; http://192.168.4.1/setup)", kSetupApSsid);
+  }
   if (ssid.empty()) {
     ESP_LOGW(kTag, "no station credentials yet, waiting for the setup portal");
   }
@@ -357,6 +451,20 @@ bool connected() {
   return g_connected;
 }
 
+bool WaitForStation(int timeout_ms) {
+  if (timeout_ms < 0) {
+    timeout_ms = 0;
+  }
+  const int64_t deadline = (esp_timer_get_time() / 1000) + timeout_ms;
+  while (esp_timer_get_time() / 1000 < deadline) {
+    if (connected()) {
+      return true;
+    }
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
+  return connected();
+}
+
 std::string ip() {
   std::lock_guard<std::mutex> lock(g_mutex);
   return g_ip;
@@ -365,6 +473,11 @@ std::string ip() {
 bool portal_active() {
   std::lock_guard<std::mutex> lock(g_mutex);
   return g_ap_active;
+}
+
+bool portal_held() {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_portal_hold;
 }
 
 std::string SoftApHostAddress() {
@@ -493,9 +606,30 @@ bool DismissPortal() {
 }
 
 void ClosePortalTimerFired(void* /*argument*/) {
-  if (!DismissPortal()) {
-    ESP_LOGI(kTag, "setup done; SoftAP kept (station still offline)");
+  if (!app::State::Instance().configured()) {
+    ESP_LOGW(kTag, "skip SoftAP close; claim did not persist");
+    return;
   }
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_portal_hold = false;
+    StopPortalTtlTimer();
+  }
+  // After a successful claim/manual save, drop SoftAP even if STA just flapped.
+  // Requiring g_connected left the LED stuck on SETUP (blue blink) with the
+  // open portal still advertising viaaccess-setup.
+  const esp_err_t err = SetApMode(false);
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "could not close SoftAP after setup: %s", esp_err_to_name(err));
+    return;
+  }
+  {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (g_connected) {
+      PublishPhase(app::WifiPhase::kConnected);
+    }
+  }
+  ESP_LOGI(kTag, "SoftAP closed after setup");
 }
 
 void ClosePortalAfterSetup() {

@@ -19,6 +19,7 @@
 #include "door_contact.hpp"
 #include "exit_button.hpp"
 #include "scan_service.hpp"
+#include "sync_task.hpp"
 #include "viaaccess/clock.hpp"
 #include "viaaccess/config.hpp"
 #include "viaaccess/hostname.hpp"
@@ -505,6 +506,7 @@ esp_err_t FinishLocalSave(httpd_req_t* req, viaaccess::RuntimeConfig cfg,
   const esp_err_t sent = SendJson(req, 200, PrintAndDelete(root));
   if (dismiss_portal) {
     wifi::ClosePortalAfterSetup();
+    sync_task::KickNow();
   }
   return sent;
 }
@@ -561,11 +563,10 @@ esp_err_t HandleWifiPage(httpd_req_t* req) {
 // Serve the portal as 200 HTML. iOS captive detection ignores empty 302s and
 // treats them as "no internet"; a real page (not Apple's Success body) opens
 // the sign-in sheet. Android generate_204 with a body does the same.
+// Always wifi.html: first boot is Wi-Fi + claim in one submit; ForcePortal is
+// a network change. /setup stays available if the technician opens it.
 esp_err_t ServePortalPage(httpd_req_t* req) {
   httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-  if (wifi::connected()) {
-    return HandleSetupPage(req);
-  }
   return HandleWifiPage(req);
 }
 
@@ -818,6 +819,54 @@ esp_err_t HandleSetupProvision(httpd_req_t* req) {
   return FinishLocalSave(req, std::move(cfg), "Provisionamento concluído.", true);
 }
 
+esp_err_t CompleteFirstBootClaim(httpd_req_t* req, const std::string& claim_input,
+                                 const std::string& identity_url,
+                                 const SetupWriteAuth& auth,
+                                 const std::string& setup_pin) {
+  const viaaccess::ProvisionInput input =
+      viaaccess::ParseProvisionInput(claim_input, identity_url);
+  if (!input.ok) {
+    return SendError(req, 400, input.error);
+  }
+
+  const identity::ClaimResult claimed =
+      identity::ClaimProvision(input.identity_url, input.claim_token, 12000);
+  if (!claimed.ok) {
+    return SendError(req, 502, claimed.error);
+  }
+  ESP_LOGI(kTag, "Identity claim accepted device=%s slug=%s; persisting",
+           claimed.device_id.c_str(), claimed.access_point_slug.c_str());
+
+  const viaaccess::RuntimeConfig existing = app::State::Instance().config();
+  viaaccess::RuntimeConfig cfg = BaseConfigFrom(existing);
+  cfg.configured = true;
+  cfg.identity_url =
+      viaaccess::PreferReachableIdentityURL(input.identity_url, claimed.identity_url);
+  cfg.device_key = claimed.device_key;
+  cfg.device_id = claimed.device_id;
+  cfg.access_point_slug = claimed.access_point_slug;
+  cfg.provisioned_at = viaaccess::FormatRfc3339(static_cast<int64_t>(time(nullptr)));
+  cfg.emit_detection = claimed.emit_detection;
+  cfg.debounce_ms = claimed.debounce_ms;
+  cfg.unlock_on_authorized_only = claimed.unlock_on_authorized_only;
+  cfg.contingency = claimed.contingency;
+  if (!viaaccess::Trim(claimed.setup_pin).empty()) {
+    cfg.setup_pin = viaaccess::Trim(claimed.setup_pin);
+  } else {
+    ApplyEstablishedPin(&cfg, auth);
+    if (viaaccess::Trim(cfg.setup_pin).empty()) {
+      if (!IsValidSetupPinFormat(viaaccess::Trim(setup_pin))) {
+        return SendError(req, 400,
+                         "Identity não enviou setupPin; informe um PIN (4 a 8 dígitos).");
+      }
+      cfg.setup_pin = viaaccess::Trim(setup_pin);
+    }
+  }
+  PreserveLocalHardware(&cfg, existing, false);
+  ApplyMdnsHostname(&cfg, "");
+  return FinishLocalSave(req, std::move(cfg), "Provisionamento concluído.", true);
+}
+
 esp_err_t HandleWifiScan(httpd_req_t* req) {
   if (RejectIfSetupWritesBlocked(req)) {
     return ESP_OK;
@@ -856,6 +905,9 @@ esp_err_t HandleWifiSave(httpd_req_t* req) {
   }
 
   const std::string ssid = JsonString(root, "ssid");
+  const std::string claim_input = JsonString(root, "claimInput");
+  const std::string identity_url = JsonString(root, "identityUrl");
+  const std::string setup_pin = JsonString(root, "setupPin");
   const cJSON* password_item = cJSON_GetObjectItemCaseSensitive(root, "password");
   const std::string password =
       cJSON_IsString(password_item) && password_item->valuestring != nullptr
@@ -867,14 +919,17 @@ esp_err_t HandleWifiSave(httpd_req_t* req) {
     return SendError(req, 400, "Informe o nome da rede (ssid).");
   }
 
+  const SetupWriteAuth auth_copy = auth;
+  cJSON_Delete(root);
+
   // Credentials are persisted before the radio retries: a failed association
   // must not lose what the technician typed, and NVS survives the reboot the
   // installer will probably try next.
   viaaccess::RuntimeConfig cfg = app::State::Instance().config();
-  ApplyEstablishedPin(&cfg, auth);
+  ApplyEstablishedPin(&cfg, auth_copy);
+  const bool already_configured = cfg.configured;
   cfg.wifi.ssid = ssid;
   cfg.wifi.password = password;
-  cJSON_Delete(root);
   const esp_err_t saved = app::State::Instance().SaveConfig(std::move(cfg));
   if (saved != ESP_OK) {
     return SendError(req, 500,
@@ -886,15 +941,30 @@ esp_err_t HandleWifiSave(httpd_req_t* req) {
     return SendError(req, 500,
                      std::string("Falha ao aplicar credenciais: ") + esp_err_to_name(applied));
   }
-  // Drop the 10 min hold: GOT_IP will close SoftAP once the station is up.
-  wifi::ReleasePortalHold();
+  // Already claimed: GOT_IP may drop SoftAP. First boot keeps the hold so the
+  // technician can paste the claim on the same viaaccess-setup session.
+  if (already_configured) {
+    wifi::ReleasePortalHold();
+  }
+
+  if (!already_configured && !viaaccess::Trim(claim_input).empty()) {
+    if (!wifi::WaitForStation(25000)) {
+      return SendError(req, 502,
+                       "Wi-Fi não associou. O claim não foi enviado; fique em "
+                       "viaaccess-setup e tente de novo.");
+    }
+    return CompleteFirstBootClaim(req, claim_input, identity_url, auth_copy, setup_pin);
+  }
 
   cJSON* response = cJSON_CreateObject();
   cJSON_AddBoolToObject(response, "ok", true);
   cJSON_AddStringToObject(response, "ssid", ssid.c_str());
   cJSON_AddStringToObject(
       response, "message",
-      "Credenciais salvas. Conectando à rede; acompanhe em /api/setup.");
+      already_configured
+          ? "Credenciais salvas. Conectando à rede."
+          : "Rede salva. Continue em viaaccess-setup e cole o claim em /setup. "
+            "O portal só fecha depois do provisionamento.");
   return SendJson(req, 200, PrintAndDelete(response));
 }
 
@@ -1080,9 +1150,11 @@ esp_err_t StartCaptiveHttp() {
   config.server_port = kCaptiveHttpPort;
   config.ctrl_port = ESP_HTTPD_DEF_CTRL_PORT + 2;
   config.max_uri_handlers = sizeof(kRoutes) / sizeof(kRoutes[0]) + 2;
-  config.stack_size = 8192;
-  config.recv_wait_timeout = 15;
-  config.send_wait_timeout = 15;
+  // TLS claim to Identity runs on this task; 8 KB overflowed and left the
+  // token consumed in Identity with config.json still unprovisioned.
+  config.stack_size = 12288;
+  config.recv_wait_timeout = 60;
+  config.send_wait_timeout = 30;
   config.lru_purge_enable = true;
   config.max_open_sockets = 7;
 
@@ -1113,11 +1185,10 @@ esp_err_t StartOn(int port) {
   config.server_port = static_cast<uint16_t>(port);
   config.ctrl_port = ESP_HTTPD_DEF_CTRL_PORT;
   config.max_uri_handlers = sizeof(kRoutes) / sizeof(kRoutes[0]) + 2;
-  // Provision talks to Identity inside the handler (claim, then ping), so the
-  // worker needs both a generous stack and a receive timeout above those calls.
-  config.stack_size = 8192;
-  config.recv_wait_timeout = 15;
-  config.send_wait_timeout = 15;
+  // Wi-Fi + claim: ~25s associate + TLS to Identity on this task.
+  config.stack_size = 12288;
+  config.recv_wait_timeout = 60;
+  config.send_wait_timeout = 30;
   config.lru_purge_enable = true;
   config.max_open_sockets = 4;
 

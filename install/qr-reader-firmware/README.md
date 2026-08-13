@@ -242,11 +242,11 @@ not touched during reset). Gestures are exclusive in time:
 
 | Gesture | Action |
 |---|---|
-| 1 click | Announce posture: success beep = `ONLINE`, fail beeps = setup / contingency / stale. **While SoftAP is up and the station is online, any click burst (1/2/3) dismisses the portal** and returns to normal operation. |
-| 2 clicks | Synthetic REX — only when **Fiação** has REX enabled **and** Simular checked (ignored while SoftAP is up; that click closes the portal instead) |
-| 3 clicks | Force SoftAP `viaaccess-setup` immediately. Join it; the phone “Sign in to network” sheet should open setup. Fallback: `http://192.168.4.1/setup` (no port). Required to change setup after the reader is provisioned (LAN/STA writes are rejected). SoftAP closes after a successful `/setup` save, a BOOT click, or `/wifi` once STA gets an IP. 10 min TTL only if setup is abandoned. |
+| 1 click | Announce posture: success beep = `ONLINE`, fail beeps = setup / contingency / stale. After provision, while SoftAP is up and the station is online, any click burst (1/2/3) dismisses the portal. **Before claim, clicks never drop SoftAP.** |
+| 2 clicks | Synthetic REX — only when **Fiação** has REX enabled **and** Simular checked (ignored while SoftAP is up on a provisioned unit; that click closes the portal instead) |
+| 3 clicks | Force SoftAP `viaaccess-setup` immediately. Join it; the phone “Sign in to network” sheet should open setup. Fallback: `http://192.168.4.1/wifi` (no port). Required to change setup after the reader is provisioned (LAN/STA writes are rejected). On first boot the portal stays up until the claim is saved. After provision, a successful `/setup` save (or `/wifi` GOT_IP) closes it. |
 | Hold 2 s | Warning cue (keep holding). Not used to leave setup — too close to factory reset. |
-| Hold 5 s | Factory reset: clear Identity credentials **and** Wi-Fi, then reboot into SoftAP |
+| Hold 5 s | Factory reset: clear Identity credentials **and** Wi-Fi. After the fail beep, **release BOOT** (success beep = saved). GPIO0 held through reset puts the S3 in download mode and the app comes back still provisioned (solid green, no `viaaccess-setup`). After a clean reboot the LED blinks blue and SoftAP appears. |
 
 REX (GPIO 12 and BOOT) is **off by default**. Enable it under `/setup` → **Fiação**
 when a physical exit button is wired; turn on Simular for bench / BOOT 2-click unlock.
@@ -260,15 +260,23 @@ for status so the external KY-016 module is optional.
 
 | Board revision | WS2812 GPIO |
 |---|---|
-| DevKitC-1 **v1.1** (default) | **38** |
+| DevKitC-1 **v1.1** (default in Fiação) | **38** |
 | DevKitC-1 v1.0 | 48 |
+
+On first boot and after factory reset the firmware drives **both** pins so either
+revision lights up. Fiação can pin a single GPIO if you wire a custom WS2812.
 
 | Mode | Color | Pattern |
 |---|---|---|
 | `ONLINE` | Green | Solid |
 | `SYNC_STALE` | Red | Solid |
 | `CONTINGENCY` | Red | Blink |
-| `SETUP` | Blue | Blink |
+| `SETUP` | Blue | Blink (unprovisioned, or SoftAP held via BOOT 3-click) |
+
+After a successful claim the LED follows Identity reachability, not the save
+itself. The policy worker runs immediately (and retries every 2 s until the
+first snapshot lands), then settles on the 60 s cadence. A few seconds of red
+blink before solid green is normal; a full minute is not.
 
 `/health` reports `statusLed.module: "WS2812"` (or `"KY-016"`). `/setup` → **Fiação**
 can switch driver, GPIO, and brightness.
@@ -459,14 +467,14 @@ counterpart because the Pi gets its date from the distribution.
 
 1. The appliance raises an open SoftAP named `viaaccess-setup`.
 2. Join it. The phone should show a “Sign in to network” / captive-portal sheet
-   and open setup. If it does not, open `http://192.168.4.1/wifi` (port 80, no
-   `:3710`). Pick the network and submit. The portal drops as soon as the
-   station associates, which is the success signal; the appliance is then
-   reachable at `http://viaaccess.local/setup` on the LAN (scripts still use
-   `:3710`; optional `https://…/` on port 443 with `curl -k`).
-3. Open `/setup` and paste the provisioning URL or the `clm_` token from the
-   dashboard. Provisioning derives the LAN hostname from the access point slug
-   (`viaaccess-{slug}.local`).
+   (fallback `http://192.168.4.1/wifi`, no `:3710`).
+3. On that same sheet: building Wi-Fi **and** the provisioning URL/`clm_` token,
+   one submit. The reader associates, consumes the claim, then drops SoftAP
+   (~1.5 s).    Keep the phone on `viaaccess-setup` until the LED leaves blue; if
+   the phone hops anyway, the ESP still finishes the claim. Hostname becomes
+   `viaaccess-{slug}.local`.
+   SoftAP stays up until the claim is saved. One BOOT click only reports
+   status; factory reset is the way to wipe and start over.
 
 If the network is wrong or the password changed, five failed association attempts
 bring the SoftAP back so no serial cable is needed. Three clicks on the DevKit
@@ -512,7 +520,7 @@ on load, once, so a refresh does not fight typing.
 | `POST /api/setup/provision` | Zero-touch claim with a `clm_` token (saves after claim; no second Identity ping) |
 | `POST /api/setup/hardware` | Wiring only, no credentials and no Identity round-trip |
 | `GET /api/setup/wifi/scan` | Nearby networks, strongest first |
-| `POST /api/setup/wifi` | Store credentials and reconnect |
+| `POST /api/setup/wifi` | Store credentials and reconnect. First boot: optional `claimInput` in the same POST; the reader waits for STA then consumes the claim even if the phone hops |
 | `POST /api/door-contact/sim` | `{"state":"open"\|"closed"}`, simulation only |
 | `POST /api/exit-button/sim` | `{"state":"pressed"\|"idle"}`, simulation only |
 
@@ -658,11 +666,12 @@ After claim, mutating `/api/setup*` requires:
 
 1. **Setup PIN** (from Identity claim or set on the manual path). Five wrong
    guesses pause further attempts for 60 seconds.
-2. **SoftAP portal up** (BOOT 3-click / STA failures / first boot). SoftAP forced
-   while STA is up is **held** so GOT_IP does not kick the phone mid-form.
-   A successful `/setup` save closes it in ~1.5 s. A BOOT click (1, 2 or 3) while
-   SoftAP is up and STA is online dismisses it immediately. 10 min TTL is only
-   the fallback if nobody saves and nobody clicks.
+2. **SoftAP portal up** (BOOT 3-click / STA failures / first boot). SoftAP is
+   **held** through STA GOT_IP while the unit is not yet claimed, so Wi‑Fi and
+   claim share one `viaaccess-setup` session. After claim, a successful `/setup`
+   save closes it in ~1.5 s. Before claim, SoftAP cannot be dismissed (BOOT
+   click or TTL). After provision, a BOOT click (1, 2 or 3) while SoftAP is up
+   and STA is online dismisses it immediately.
 3. **URL on SoftAP** — join `viaaccess-setup`. Captive DNS + HTTP `:80` should
    open the setup sheet. Fallback `http://192.168.4.1/setup` (`Host: 192.168.4.1`).
    SoftAP uses **HTTP on purpose**: mobile browsers often hard-fail self-signed

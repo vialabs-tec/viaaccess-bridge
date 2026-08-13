@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_strip.h"
+#include "viaaccess/config.hpp"
 #include "viaaccess/status_led.hpp"
 
 namespace status_led {
@@ -28,6 +29,7 @@ bool g_ready = false;
 bool g_blink_on = true;
 bool g_gpio_claimed = false;
 led_strip_handle_t g_strip = nullptr;
+led_strip_handle_t g_strip_alt = nullptr;
 char g_pattern_name[24] = "UNKNOWN";
 
 bool IsKy016(const viaaccess::StatusLedConfig& cfg) {
@@ -69,13 +71,18 @@ void ReleaseGpioLocked() {
   g_gpio_claimed = false;
 }
 
-void ReleaseStripLocked() {
-  if (g_strip == nullptr) {
+void DeleteStrip(led_strip_handle_t* strip) {
+  if (*strip == nullptr) {
     return;
   }
-  led_strip_clear(g_strip);
-  led_strip_del(g_strip);
-  g_strip = nullptr;
+  led_strip_clear(*strip);
+  led_strip_del(*strip);
+  *strip = nullptr;
+}
+
+void ReleaseStripLocked() {
+  DeleteStrip(&g_strip);
+  DeleteStrip(&g_strip_alt);
 }
 
 void ReleaseAllLocked() {
@@ -118,11 +125,15 @@ void DriveLocked(bool red, bool green, bool blue) {
     gpio_set_level(static_cast<gpio_num_t>(g_config.blue_pin), Level(blue));
     return;
   }
-  if (g_strip == nullptr) {
-    return;
-  }
-  led_strip_set_pixel(g_strip, 0, Channel(red), Channel(green), Channel(blue));
-  led_strip_refresh(g_strip);
+  auto paint = [&](led_strip_handle_t strip) {
+    if (strip == nullptr) {
+      return;
+    }
+    led_strip_set_pixel(strip, 0, Channel(red), Channel(green), Channel(blue));
+    led_strip_refresh(strip);
+  };
+  paint(g_strip);
+  paint(g_strip_alt);
 }
 
 void PublishHealthLocked() {
@@ -169,14 +180,12 @@ esp_err_t ConfigureKy016Locked(const viaaccess::StatusLedConfig& cfg) {
   return ESP_OK;
 }
 
-esp_err_t ConfigureWs2812Locked(const viaaccess::StatusLedConfig& cfg) {
-  if (cfg.ws2812_pin < 0 || !GPIO_IS_VALID_OUTPUT_GPIO(cfg.ws2812_pin)) {
-    ESP_LOGE(kTag, "WS2812 GPIO %d invalid on this target", cfg.ws2812_pin);
+esp_err_t NewWs2812Strip(int pin, led_strip_handle_t* out) {
+  if (pin < 0 || !GPIO_IS_VALID_OUTPUT_GPIO(pin)) {
     return ESP_ERR_INVALID_ARG;
   }
-
   led_strip_config_t strip_config = {};
-  strip_config.strip_gpio_num = cfg.ws2812_pin;
+  strip_config.strip_gpio_num = pin;
   strip_config.max_leds = 1;
   strip_config.led_pixel_format = LED_PIXEL_FORMAT_GRB;
   strip_config.led_model = LED_MODEL_WS2812;
@@ -185,16 +194,48 @@ esp_err_t ConfigureWs2812Locked(const viaaccess::StatusLedConfig& cfg) {
   rmt_config.clk_src = RMT_CLK_SRC_DEFAULT;
   rmt_config.resolution_hz = 10 * 1000 * 1000;
 
-  const esp_err_t err = led_strip_new_rmt_device(&strip_config, &rmt_config, &g_strip);
+  const esp_err_t err = led_strip_new_rmt_device(&strip_config, &rmt_config, out);
   if (err != ESP_OK) {
-    ESP_LOGE(kTag, "led_strip_new_rmt_device failed on GPIO %d: %s", cfg.ws2812_pin,
+    *out = nullptr;
+    ESP_LOGE(kTag, "led_strip_new_rmt_device failed on GPIO %d: %s", pin,
              esp_err_to_name(err));
-    g_strip = nullptr;
     return err;
   }
-  led_strip_clear(g_strip);
+  led_strip_clear(*out);
+  return ESP_OK;
+}
+
+int CompanionDevKitPin(int pin) {
+  if (pin == viaaccess::kDefaultStatusLedWs2812Pin) {
+    return viaaccess::kAltStatusLedWs2812Pin;
+  }
+  if (pin == viaaccess::kAltStatusLedWs2812Pin) {
+    return viaaccess::kDefaultStatusLedWs2812Pin;
+  }
+  return -1;
+}
+
+esp_err_t ConfigureWs2812Locked(const viaaccess::StatusLedConfig& cfg) {
+  const esp_err_t err = NewWs2812Strip(cfg.ws2812_pin, &g_strip);
+  if (err != ESP_OK) {
+    return err;
+  }
+  const int companion = CompanionDevKitPin(cfg.ws2812_pin);
+  if (companion >= 0) {
+    const esp_err_t alt = NewWs2812Strip(companion, &g_strip_alt);
+    if (alt != ESP_OK) {
+      ESP_LOGW(kTag, "companion WS2812 GPIO %d skipped: %s", companion,
+               esp_err_to_name(alt));
+    }
+  }
   g_ready = true;
-  ESP_LOGI(kTag, "WS2812 ready on GPIO %d (brightness=%d)", cfg.ws2812_pin, cfg.brightness);
+  if (g_strip_alt != nullptr) {
+    ESP_LOGI(kTag, "WS2812 ready on GPIO %d and %d (brightness=%d)", cfg.ws2812_pin,
+             companion, cfg.brightness);
+  } else {
+    ESP_LOGI(kTag, "WS2812 ready on GPIO %d (brightness=%d)", cfg.ws2812_pin,
+             cfg.brightness);
+  }
   return ESP_OK;
 }
 
@@ -225,10 +266,13 @@ esp_err_t ConfigureLocked(const viaaccess::StatusLedConfig& cfg) {
 void Loop(void* /*argument*/) {
   for (;;) {
     const viaaccess::OperationMode mode = app::State::Instance().operation_mode();
-    // SoftAP up: show SETUP (blue blink) even if Identity just dropped. Red
-    // contingency while the technician is on viaaccess-setup looks like a fault.
+    // SoftAP + unprovisioned (or ForcePortal hold): blue SETUP. After claim the
+    // hold is cleared immediately so the LED follows ONLINE / SYNC_STALE even
+    // if SoftAP takes a moment to drop — otherwise it stays blue forever.
+    const bool setup_overlay = wifi::portal_active() &&
+                               (!app::State::Instance().configured() || wifi::portal_held());
     const viaaccess::LedPattern next = viaaccess::PatternForMode(
-        wifi::portal_active() ? viaaccess::OperationMode::kSetup : mode);
+        setup_overlay ? viaaccess::OperationMode::kSetup : mode);
 
     {
       std::lock_guard<std::mutex> lock(g_mutex);

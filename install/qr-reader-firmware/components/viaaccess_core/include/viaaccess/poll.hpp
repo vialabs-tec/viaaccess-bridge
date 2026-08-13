@@ -11,6 +11,9 @@ inline constexpr int kCommandPollIdleMs = 3000;
 inline constexpr int kCommandPollFastMs = 1000;
 inline constexpr int kCommandPollMaxMs = 60000;
 inline constexpr int kPolicySyncIntervalMs = 60000;
+// After claim / reboot, retry quickly until the first successful policy sync
+// so the LED is not stuck on CONTINGENCY for a full minute.
+inline constexpr int kPolicySyncCatchUpMs = 2000;
 inline constexpr int kIdentityProbeIntervalMs = 30000;
 
 int NextCommandPollDelayMs(int poll_after_ms,

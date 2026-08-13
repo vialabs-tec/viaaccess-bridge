@@ -23,6 +23,13 @@ viaaccess::RuntimeConfig LoadConfig();
 // the secrets into NVS.
 esp_err_t SaveConfig(const viaaccess::RuntimeConfig& cfg);
 
+// WipeProvisioning drops config.json and the viaaccess NVS namespace so the
+// next boot cannot come back still claimado. Used when SaveConfig is not enough.
+esp_err_t WipeProvisioning();
+
+// Unmount flushes LittleFS. Call before esp_restart after a factory reset.
+esp_err_t Unmount();
+
 // SavePolicySnapshot keeps the raw Identity document so a reboot can restore
 // grants and the HMAC ticket key without waiting for the next sync.
 esp_err_t SavePolicySnapshot(const std::string& json);

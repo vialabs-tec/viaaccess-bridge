@@ -45,8 +45,8 @@
   <main>
     <h1>Rede Wi-Fi do leitor</h1>
     <p>
-      O leitor precisa de uma rede 2,4 GHz com acesso ao Identity. Escolha a rede, informe a senha
-      e aguarde a conexão; depois siga para o provisionamento.
+      Uma etapa: rede 2,4 GHz <strong>e</strong> o claim do Identity nesta mesma
+      folha. Fique em <code>viaaccess-setup</code> até o LED sair do azul.
     </p>
 
     <div id="netbar" class="netbar">Verificando rede…</div>
@@ -62,6 +62,16 @@
       <label>Senha
         <input name="password" type="password" autocomplete="off" placeholder="Deixe vazio para rede aberta" />
       </label>
+      <label>URL ou token de provisionamento
+        <textarea name="claimInput" required rows="3"
+          placeholder="https://…/bridge/provision?t=clm_… ou só clm_…"
+          style="width:100%;margin-top:0.35rem;padding:0.55rem 0.65rem;border-radius:8px;border:1px solid #2a3441;background:#121820;color:inherit;box-sizing:border-box;min-height:4.5rem"></textarea>
+        <span class="field-hint">Cole o QR/URL do admin. Wi-Fi e claim vão no mesmo envio; o portal só fecha depois.</span>
+      </label>
+      <label id="provision-identity" hidden>URL do Identity
+        <input name="identityUrl" type="url" placeholder="https://identity.seudominio.com" />
+        <span class="field-hint">Só aparece se você colar o token <code>clm_</code> sozinho.</span>
+      </label>
       <div class="actions">
         <label id="pin-field" class="pin-field" hidden>PIN de setup
           <input name="pin" type="password" inputmode="numeric" autocomplete="off" />
@@ -71,7 +81,7 @@
             placeholder="4 a 8 dígitos" />
           <span class="field-hint">Este leitor ainda não tem PIN. Defina um agora para trocar a rede.</span>
         </label>
-        <button type="submit">Conectar</button>
+        <button type="submit">Conectar e provisionar</button>
         <button type="button" class="secondary" id="rescan">Buscar redes novamente</button>
         <div id="msg" class="msg"></div>
       </div>
@@ -105,8 +115,18 @@
         const setupPinField = document.getElementById('setup-pin-field');
         if (pinField) pinField.hidden = !data.pinRequired || !writesAllowed;
         if (setupPinField) setupPinField.hidden = !data.pinSetupRequired || !writesAllowed;
+        const firstBoot = Boolean(data.setupRequired);
+        claimInput.required = firstBoot;
+        claimInput.closest('label').hidden = !firstBoot;
+        if (!firstBoot) {
+          provisionIdentity.hidden = true;
+          provisionIdentityInput.required = false;
+        }
         const submit = document.querySelector('#wifi-form button[type="submit"]');
-        if (submit) submit.disabled = !writesAllowed || pinLocked;
+        if (submit) {
+          submit.disabled = !writesAllowed || pinLocked;
+          submit.textContent = firstBoot ? 'Conectar e provisionar' : 'Conectar';
+        }
         if (!writesAllowed) {
           lockbar.hidden = false;
           lockbar.innerHTML =
@@ -124,8 +144,7 @@
         }
         if (net.connected) {
           netbar.className = 'netbar';
-          netbar.innerHTML = '<strong>Conectado a</strong> ' + (net.ssid || '—') + ' · IP ' + (net.ip || '—') +
-            '<br /><a href="/setup">Ir para o provisionamento</a>';
+          netbar.innerHTML = '<strong>Conectado a</strong> ' + (net.ssid || '—') + ' · IP ' + (net.ip || '—');
         } else {
           netbar.className = 'netbar offline';
           netbar.innerHTML = '<strong>Ainda sem conexão.</strong> Rede configurada: ' + (net.ssid || 'nenhuma');
@@ -160,6 +179,17 @@
     });
     document.getElementById('rescan').addEventListener('click', scan);
 
+    const claimInput = document.querySelector('[name="claimInput"]');
+    const provisionIdentity = document.getElementById('provision-identity');
+    const provisionIdentityInput = provisionIdentity.querySelector('input');
+    function syncIdentityField() {
+      const value = (claimInput.value || '').trim();
+      const needsHost = value.startsWith('clm_');
+      provisionIdentity.hidden = !needsHost;
+      provisionIdentityInput.required = needsHost;
+    }
+    claimInput.addEventListener('input', syncIdentityField);
+
     document.getElementById('wifi-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       msg.textContent = '';
@@ -167,6 +197,8 @@
       const fd = new FormData(e.target);
       const btn = e.target.querySelector('button[type="submit"]');
       btn.disabled = true;
+      msg.textContent = 'Conectando à rede e fazendo o claim. Não troque de Wi-Fi.';
+      msg.className = 'msg';
       try {
         const res = await fetch('/api/setup/wifi', {
           method: 'POST',
@@ -176,21 +208,24 @@
             setupPin: fd.get('setupPin') || '',
             ssid: fd.get('ssid'),
             password: fd.get('password') || '',
+            claimInput: fd.get('claimInput') || '',
+            identityUrl: fd.get('identityUrl') || '',
           }),
         });
         const data = await res.json();
         if (!res.ok || !data.ok) {
-          msg.textContent = data.error || 'Falha ao salvar a rede.';
+          msg.textContent = data.error || 'Falha ao provisionar.';
           msg.className = 'msg err';
           refreshStatus();
           return;
         }
-        // The SoftAP drops as soon as the station associates, so this page may
-        // stop responding. That is the success signal for the technician.
-        msg.textContent = data.message || 'Credenciais salvas.';
+        msg.textContent = data.message || 'Provisionamento concluído.';
         msg.className = 'msg ok';
+        refreshStatus();
       } catch (err) {
-        msg.textContent = String(err);
+        msg.textContent =
+          'A folha pode ter caído se o celular saiu de viaaccess-setup. Olhe o LED: verde = deu certo. ' +
+          String(err);
         msg.className = 'msg err';
       } finally {
         btn.disabled = !writesAllowed || pinLocked;

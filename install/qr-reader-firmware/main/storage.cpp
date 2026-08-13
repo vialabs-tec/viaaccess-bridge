@@ -1,6 +1,8 @@
 #include "storage.hpp"
 
 #include <cstdio>
+#include <stdio.h>
+#include <unistd.h>
 #include <vector>
 
 #include "config_json.hpp"
@@ -65,6 +67,16 @@ esp_err_t WriteFileAtomic(const char* path, const char* temp_path, const std::st
   if (std::rename(temp_path, path) != 0) {
     ESP_LOGE(kTag, "cannot rename %s to %s", temp_path, path);
     return ESP_FAIL;
+  }
+  // fsync the new inode so a reset cannot observe the previous document.
+  // Do not fsync the directory: that hung this chip on LittleFS.
+  FILE* out = std::fopen(path, "rb");
+  if (out != nullptr) {
+    const int fd = fileno(out);
+    if (fd >= 0) {
+      fsync(fd);
+    }
+    std::fclose(out);
   }
   return ESP_OK;
 }
@@ -143,6 +155,14 @@ viaaccess::RuntimeConfig LoadConfig() {
 esp_err_t SaveConfig(const viaaccess::RuntimeConfig& raw) {
   const viaaccess::RuntimeConfig cfg = viaaccess::Normalize(raw);
 
+  // JSON first, then NVS secrets. The previous order left a device_key in NVS
+  // with config.json still unconfigured if LittleFS lost the rename across reset.
+  const esp_err_t json_err =
+      WriteFileAtomic(kConfigPath, kConfigTempPath, config_json::Serialize(cfg));
+  if (json_err != ESP_OK) {
+    return json_err;
+  }
+
   nvs_handle_t handle = 0;
   esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &handle);
   if (err != ESP_OK) {
@@ -162,7 +182,50 @@ esp_err_t SaveConfig(const viaaccess::RuntimeConfig& raw) {
     return err;
   }
 
-  return WriteFileAtomic(kConfigPath, kConfigTempPath, config_json::Serialize(cfg));
+  if (cfg.configured) {
+    const viaaccess::RuntimeConfig loaded = LoadConfig();
+    if (!loaded.configured || loaded.device_key.empty() || loaded.identity_url.empty()) {
+      ESP_LOGE(kTag, "config read-back failed (configured=%d key=%d url=%d)",
+               loaded.configured ? 1 : 0, loaded.device_key.empty() ? 0 : 1,
+               loaded.identity_url.empty() ? 0 : 1);
+      return ESP_FAIL;
+    }
+  }
+  return ESP_OK;
+}
+
+esp_err_t WipeProvisioning() {
+  std::remove(kConfigPath);
+  std::remove(kConfigTempPath);
+  std::remove(kPolicyPath);
+  std::remove(kPolicyTempPath);
+
+  nvs_handle_t handle = 0;
+  esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "nvs open for wipe failed: %s", esp_err_to_name(err));
+    return err;
+  }
+  err = nvs_erase_all(handle);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    err = ESP_OK;
+  }
+  if (err == ESP_OK) {
+    err = nvs_commit(handle);
+  }
+  nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "nvs wipe failed: %s", esp_err_to_name(err));
+  }
+  return err;
+}
+
+esp_err_t Unmount() {
+  const esp_err_t err = esp_vfs_littlefs_unregister(kPartitionLabel);
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "littlefs unmount: %s", esp_err_to_name(err));
+  }
+  return err;
 }
 
 esp_err_t SavePolicySnapshot(const std::string& json) {

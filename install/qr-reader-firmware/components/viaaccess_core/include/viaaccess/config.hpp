@@ -51,7 +51,9 @@ inline constexpr int kDefaultStatusLedRedPin = 4;
 inline constexpr int kDefaultStatusLedGreenPin = 5;
 inline constexpr int kDefaultStatusLedBluePin = 6;
 // ESP32-S3-DevKitC-1 onboard WS2812: GPIO38 on v1.1, GPIO48 on v1.0.
+// Firmware drives both canonical pins unless Fiação sets a custom GPIO.
 inline constexpr int kDefaultStatusLedWs2812Pin = 38;
+inline constexpr int kAltStatusLedWs2812Pin = 48;
 inline constexpr int kDefaultStatusLedBrightness = 40;
 inline constexpr const char* kStatusLedDriverOnboardWs2812 = "onboard_ws2812";
 inline constexpr const char* kStatusLedDriverKy016 = "ky016";

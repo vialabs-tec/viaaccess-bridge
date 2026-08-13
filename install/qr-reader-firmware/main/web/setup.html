@@ -57,8 +57,12 @@
 <body>
   <main>
     <h1>ViaAccess QR Reader</h1>
-    <p>Provisionamento zero-touch: cole o claim do admin. GPIO/relé usam o mapa de fábrica.</p>
-    <p class="hint-url">Prefira <code id="hint-url">http://viaaccess.local/setup</code> (mesma Wi‑Fi). Se não resolver, use o IP mostrado abaixo.</p>
+    <p>
+      Nesta rede <code>viaaccess-setup</code>, configure o Wi‑Fi do prédio e cole o claim
+      na mesma folha. O portal só fecha depois do provisionamento. GPIO/relé usam o mapa
+      de fábrica.
+    </p>
+    <p class="hint-url">Depois de provisionado, na LAN: <code id="hint-url">http://viaaccess.local/setup</code>.</p>
 
     <div id="netbar" class="netbar">Verificando rede…</div>
     <div id="lockbar" class="lockbar" hidden></div>
@@ -409,7 +413,9 @@
           field.hidden = !(show && setupWritesAllowed);
         });
         document.querySelectorAll('.actions button[type="submit"]').forEach((btn) => {
-          btn.disabled = !setupWritesAllowed || pinLocked;
+          const needsIdentity = btn.closest('#panel-wiring') == null;
+          const blockedOffline = data.setupRequired && !net.connected && needsIdentity;
+          btn.disabled = !setupWritesAllowed || pinLocked || blockedOffline;
         });
         if (!setupWritesAllowed) {
           lockbar.hidden = false;
@@ -437,6 +443,16 @@
           lockbar.innerHTML =
             '<strong>PIN bloqueado.</strong> Cinco tentativas erradas. Aguarde ' +
             lockSec + '&nbsp;s para tentar de novo.';
+        } else if (data.setupRequired && net.portalActive && net.viaSoftAp) {
+          lockbar.hidden = false;
+          lockbar.style.borderColor = '#166534';
+          lockbar.style.background = '#0a1a10';
+          lockbar.style.color = '#4ade80';
+          lockbar.innerHTML = net.connected
+            ? '<strong>Rede ok.</strong> Cole o claim nesta folha. O portal fecha depois do provisionamento. ' +
+              'Para sair sem provisionar, um clique no BOOT.'
+            : '<strong>Modo setup (SoftAP).</strong> Primeiro <a href="/wifi">configure o Wi‑Fi</a>, ' +
+              'depois cole o claim aqui. O portal não fecha só por conectar na rede do prédio.';
         } else if (net.portalActive && net.viaSoftAp) {
           lockbar.hidden = false;
           lockbar.style.borderColor = '#166534';
@@ -444,8 +460,7 @@
           lockbar.style.color = '#4ade80';
           lockbar.innerHTML =
             '<strong>Modo setup ativo (SoftAP).</strong> Pode alterar com o PIN. ' +
-            'Pode alterar com o PIN. Depois de salvar, o portal fecha. ' +
-            'Para cancelar sem mudar nada, um clique no BOOT.';
+            'Depois de salvar, o portal fecha. Para cancelar sem mudar nada, um clique no BOOT.';
         } else {
           lockbar.hidden = true;
           lockbar.textContent = '';

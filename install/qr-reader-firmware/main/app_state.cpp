@@ -10,6 +10,7 @@
 #include "storage.hpp"
 #include "viaaccess/time.hpp"
 #include "viaaccess/version.hpp"
+#include "wifi_manager.hpp"
 
 namespace app {
 namespace {
@@ -155,20 +156,25 @@ void State::EnterSetupMode(const std::string& reason) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!config_.configured) {
-      return;
+      cfg = config_;
+    } else {
+      cfg = viaaccess::ResetToSetup(config_);
+      const esp_err_t err = storage::SaveConfig(cfg);
+      if (err != ESP_OK) {
+        ESP_LOGE(kTag, "setup reset save failed: %s", esp_err_to_name(err));
+        return;
+      }
+      config_ = cfg;
+      device_config_etag_.clear();
+      identity_reachable_ = false;
     }
-    cfg = viaaccess::ResetToSetup(config_);
-    const esp_err_t err = storage::SaveConfig(cfg);
-    if (err != ESP_OK) {
-      ESP_LOGE(kTag, "setup reset save failed: %s", esp_err_to_name(err));
-      return;
-    }
-    config_ = cfg;
-    device_config_etag_.clear();
-    identity_reachable_ = false;
   }
   ESP_LOGW(kTag, "device key invalid (%s), setup mode at http://%s.local:%d/setup",
            reason.c_str(), cfg.mdns.hostname.c_str(), cfg.http_port);
+  const esp_err_t portal = wifi::ForcePortal();
+  if (portal != ESP_OK) {
+    ESP_LOGE(kTag, "ForcePortal after setup reset: %s", esp_err_to_name(portal));
+  }
 }
 
 void State::set_identity_reachable(bool reachable) {

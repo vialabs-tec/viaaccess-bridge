@@ -37,8 +37,8 @@ std::vector<ScanEntry> Scan();
 esp_err_t ForcePortal();
 
 // ClosePortalAfterSetup drops SoftAP ~1.5 s after a successful /setup save so
-// the HTTP 200 still reaches the phone. No-op if the station is still offline
-// (recovery SoftAP must stay up). 10 min TTL remains only if setup is abandoned.
+// the HTTP 200 still reaches the phone. After claim the portal closes even if
+// STA flaps; recovery is BOOT 3-click. 10 min TTL remains if setup is abandoned.
 void ClosePortalAfterSetup();
 
 // DismissPortal closes SoftAP immediately when the station is online (BOOT
@@ -46,14 +46,20 @@ void ClosePortalAfterSetup();
 // down. Keeps SoftAP if STA is offline so recovery is not bricked.
 bool DismissPortal();
 
-// ReleasePortalHold lets the next STA GOT_IP close SoftAP (Wi-Fi credentials
-// just saved; do not tear the portal down before the station associates).
+// ReleasePortalHold lets the next STA GOT_IP close SoftAP. Used after a
+// Wi-Fi change on an already-provisioned unit. Unconfigured units keep the
+// hold so the phone can paste the claim on the same SoftAP session.
 void ReleasePortalHold();
+
+bool WaitForStation(int timeout_ms);
 
 bool connected();
 
 // ip is the station address, empty while not connected.
 std::string ip();
+
+// True while ForcePortal / first-boot hold is keeping SoftAP up through GOT_IP.
+bool portal_held();
 
 // True while the SoftAP interface is up (first boot, STA failures, or ForcePortal).
 bool portal_active();

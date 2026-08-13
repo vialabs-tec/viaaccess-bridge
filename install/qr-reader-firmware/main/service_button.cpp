@@ -80,6 +80,10 @@ void SyntheticRex() {
   }
 }
 
+bool ConfigLooksFactoryReset(const viaaccess::RuntimeConfig& cfg) {
+  return !cfg.configured && cfg.wifi.ssid.empty() && cfg.device_key.empty();
+}
+
 void FactoryResetAndReboot() {
   ESP_LOGW(kTag, "long-press: factory reset (credentials + Wi-Fi)");
   buzzer::BeepFail();
@@ -89,14 +93,32 @@ void FactoryResetAndReboot() {
   cfg.wifi.ssid.clear();
   cfg.wifi.password.clear();
 
-  const esp_err_t err = storage::SaveConfig(cfg);
-  if (err != ESP_OK) {
-    ESP_LOGE(kTag, "factory reset save failed: %s", esp_err_to_name(err));
-    return;
+  // Persist on disk only. State::SaveConfig also re-applies every driver and
+  // can stall this task (BOOT then looks "dead", LED stays SYNC_STALE red).
+  esp_err_t err = storage::SaveConfig(cfg);
+  viaaccess::RuntimeConfig loaded = storage::LoadConfig();
+  if (err != ESP_OK || !ConfigLooksFactoryReset(loaded)) {
+    ESP_LOGE(kTag, "factory reset save not durable (err=%s configured=%d); wiping",
+             esp_err_to_name(err), loaded.configured ? 1 : 0);
+    storage::WipeProvisioning();
+    err = storage::SaveConfig(cfg);
+    loaded = storage::LoadConfig();
   }
+  if (err != ESP_OK || !ConfigLooksFactoryReset(loaded)) {
+    ESP_LOGE(kTag, "factory reset wipe fallback");
+    storage::WipeProvisioning();
+  }
+  storage::Unmount();
 
-  // Brief pause so the fail cue can finish before the chip resets.
-  vTaskDelay(pdMS_TO_TICKS(400));
+  // GPIO0 is a strapping pin. Restarting while BOOT is still held puts the
+  // ESP32-S3 in download mode; when the chip later boots the app, LittleFS may
+  // still show the old config and the technician sees green / no SoftAP.
+  ESP_LOGW(kTag, "factory reset saved; release BOOT to reboot");
+  buzzer::BeepSuccess();
+  while (ReadPressed()) {
+    vTaskDelay(pdMS_TO_TICKS(kPollMs));
+  }
+  vTaskDelay(pdMS_TO_TICKS(250));
   esp_restart();
 }
 
@@ -121,10 +143,11 @@ bool ClickWhilePortal(viaaccess::ServiceGesture gesture) {
 }
 
 void HandleGesture(viaaccess::ServiceGesture gesture) {
-  // Any click burst while the setup AP is up and the station is online: leave
-  // provisioning. Hold stays factory-reset so a long press cannot be mistaken
-  // for "just close the portal".
-  if (ClickWhilePortal(gesture) && wifi::connected()) {
+  // Provisioned ForcePortal: any click while SoftAP is up and STA is online
+  // dismisses the open network. Unprovisioned units must keep viaaccess-setup
+  // (one click used to strand the technician after Identity had already claimed).
+  if (ClickWhilePortal(gesture) && wifi::connected() &&
+      app::State::Instance().configured()) {
     DismissPortalFromBoot();
     return;
   }
@@ -185,8 +208,8 @@ esp_err_t Start() {
     return err;
   }
 
-  // Stack sized for factory reset (save + restart) and REX notify.
-  xTaskCreate(WatcherLoop, "va_boot_btn", 4096, nullptr, 3, nullptr);
+  // Stack sized for factory reset (save + read-back + wait for BOOT release).
+  xTaskCreate(WatcherLoop, "va_boot_btn", 8192, nullptr, 3, nullptr);
   ESP_LOGI(kTag,
            "BOOT GPIO0 gestures: 1=status 2=REX(if sim) 3=SoftAP "
            "(any click dismisses SoftAP if STA up) hold5s=factory-reset");

@@ -28,6 +28,7 @@ namespace {
 constexpr const char* kTag = "sync";
 
 std::atomic<bool> g_started{false};
+TaskHandle_t g_policy_task = nullptr;
 
 // HandleUnauthorized is the shared reaction to a revoked device key: Identity
 // answered 401 or BRIDGE_DISABLED, so the appliance drops its credentials and
@@ -128,25 +129,33 @@ void SyncDeviceConfig(const viaaccess::RuntimeConfig& cfg) {
   // Re-arm the iBeacon from the freshly persisted overlay. SaveConfig also
   // notifies on_config_applied; this call keeps the sync path explicit when the
   // beacon ids change without a reboot.
-  ESP_ERROR_CHECK_WITHOUT_ABORT(
-      ble_beacon::ApplyConfig(state.config().ble_beacon));
+  if (!wifi::portal_active()) {
+    ESP_ERROR_CHECK_WITHOUT_ABORT(
+        ble_beacon::ApplyConfig(state.config().ble_beacon));
+  }
   ESP_LOGI(kTag, "device-config applied from Identity");
 }
 
 void PolicyLoop(void* /*argument*/) {
-  // A fresh boot has nothing to answer with, so the first cycle runs
-  // immediately instead of after the interval.
   for (;;) {
     const viaaccess::RuntimeConfig cfg = app::State::Instance().config();
-    if (cfg.configured && wifi::connected()) {
+    const bool sta_up = wifi::connected();
+    uint32_t wait_ms = viaaccess::kPolicySyncIntervalMs;
+    if (cfg.configured && sta_up) {
       SyncPolicy(cfg);
       SyncDeviceConfig(app::State::Instance().config());
       FlushContingencyOutbox(app::State::Instance().config());
+      if (!app::State::Instance().identity_reachable()) {
+        wait_ms = viaaccess::kPolicySyncCatchUpMs;
+      }
+    } else {
+      // Claim just saved, or STA still associating: do not burn a full minute.
+      wait_ms = 1000;
     }
-    // Same cadence, off the HTTP thread: an I2C stall must not hold a /health
-    // response, and enclosure temperature only needs minute resolution.
-    clock_service::RefreshRtcTemperature();
-    vTaskDelay(pdMS_TO_TICKS(viaaccess::kPolicySyncIntervalMs));
+    if (wait_ms >= 10000) {
+      clock_service::RefreshRtcTemperature();
+    }
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(wait_ms));
   }
 }
 
@@ -250,9 +259,15 @@ void Start() {
   }
   // Policy holds TLS + snapshot parse. Commands also run HTTPS OTA downloads, so
   // that task needs a larger stack for the mbedTLS session.
-  xTaskCreate(PolicyLoop, "va_policy", 8192, nullptr, 4, nullptr);
+  xTaskCreate(PolicyLoop, "va_policy", 8192, nullptr, 4, &g_policy_task);
   xTaskCreate(CommandLoop, "va_commands", 24576, nullptr, 4, nullptr);
   ESP_LOGI(kTag, "sync workers started");
+}
+
+void KickNow() {
+  if (g_policy_task != nullptr) {
+    xTaskNotifyGive(g_policy_task);
+  }
 }
 
 }  // namespace sync_task
