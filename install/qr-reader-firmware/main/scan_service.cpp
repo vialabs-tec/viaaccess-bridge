@@ -18,6 +18,7 @@
 #include "viaaccess/redeem.hpp"
 #include "viaaccess/scan.hpp"
 #include "viaaccess/strings.hpp"
+#include "wifi_manager.hpp"
 
 namespace scan_service {
 namespace {
@@ -292,6 +293,10 @@ void HandleReaderLine(const std::string& line) {
   const viaaccess::RuntimeConfig cfg = app::State::Instance().config();
   if (!cfg.configured) {
     ESP_LOGW(kTag, "scan ignored, appliance in setup mode");
+    return;
+  }
+  if (wifi::portal_active()) {
+    ESP_LOGI(kTag, "scan ignored, SoftAP portal up");
     return;
   }
 

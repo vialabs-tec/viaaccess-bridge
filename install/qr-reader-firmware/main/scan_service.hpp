@@ -21,6 +21,8 @@ HttpResult HandleHttpRequest(const std::string& raw_body,
                              const std::string& webhook_secret_header);
 
 // HandleReaderLine runs the same pipeline for a scan that arrived over UART.
+// SoftAP setup ignores UART scans: the phone screen in front of the module is
+// not a passage, and a floating RX must not redeem or beep during commissioning.
 void HandleReaderLine(const std::string& line);
 
 }  // namespace scan_service

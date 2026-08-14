@@ -13,7 +13,8 @@ namespace qr_reader {
 
 esp_err_t Start(const viaaccess::QrReaderConfig& cfg);
 
-// ApplyConfig re-opens the port when /setup changes the pins or the baud rate.
+// ApplyConfig re-opens the port when /setup changes enable, pins or baud.
+// The UART driver is torn down on the reader task, not the HTTP handler.
 esp_err_t ApplyConfig(const viaaccess::QrReaderConfig& cfg);
 
 }  // namespace qr_reader

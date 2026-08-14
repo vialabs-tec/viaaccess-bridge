@@ -24,16 +24,26 @@ constexpr size_t kReadChunkBytes = 256;
 
 std::mutex g_mutex;
 viaaccess::QrReaderConfig g_config;
+viaaccess::QrReaderConfig g_desired;
 bool g_driver_ready = false;
+bool g_reconfigure = false;
 std::atomic<uint32_t> g_scans{0};
 TaskHandle_t g_task = nullptr;
 
+bool SamePort(const viaaccess::QrReaderConfig& a, const viaaccess::QrReaderConfig& b) {
+  return a.enabled == b.enabled && a.uart_port == b.uart_port && a.rx_pin == b.rx_pin &&
+         a.tx_pin == b.tx_pin && a.baud == b.baud;
+}
+
+// Must not run while another task is inside uart_read_bytes: uart_driver_delete
+// then trips spinlock_acquire (lock->count == 0) and reboots the chip.
 esp_err_t OpenPortLocked(const viaaccess::QrReaderConfig& cfg) {
   if (g_driver_ready) {
     uart_driver_delete(static_cast<uart_port_t>(g_config.uart_port));
     g_driver_ready = false;
   }
   g_config = cfg;
+  g_desired = cfg;
   if (!cfg.enabled) {
     ESP_LOGW(kTag, "reader disabled in config, only POST /scan will work");
     return ESP_OK;
@@ -105,12 +115,17 @@ void ReaderLoop(void* /*argument*/) {
     bool ready = false;
     {
       std::lock_guard<std::mutex> lock(g_mutex);
+      if (g_reconfigure) {
+        OpenPortLocked(g_desired);
+        g_reconfigure = false;
+        lines.Reset();
+      }
       ready = g_driver_ready;
       port = static_cast<uart_port_t>(g_config.uart_port);
     }
     if (!ready) {
       publish(false);
-      vTaskDelay(pdMS_TO_TICKS(1000));
+      vTaskDelay(pdMS_TO_TICKS(200));
       continue;
     }
     publish(true);
@@ -137,6 +152,7 @@ esp_err_t Start(const viaaccess::QrReaderConfig& cfg) {
   esp_err_t err = ESP_OK;
   {
     std::lock_guard<std::mutex> lock(g_mutex);
+    g_desired = cfg;
     err = OpenPortLocked(cfg);
   }
   if (g_task == nullptr) {
@@ -148,12 +164,17 @@ esp_err_t Start(const viaaccess::QrReaderConfig& cfg) {
 
 esp_err_t ApplyConfig(const viaaccess::QrReaderConfig& cfg) {
   std::lock_guard<std::mutex> lock(g_mutex);
-  if (cfg.enabled == g_config.enabled && cfg.uart_port == g_config.uart_port &&
-      cfg.rx_pin == g_config.rx_pin && cfg.tx_pin == g_config.tx_pin &&
-      cfg.baud == g_config.baud) {
+  if (SamePort(cfg, g_reconfigure ? g_desired : g_config)) {
     return ESP_OK;
   }
-  return OpenPortLocked(cfg);
+  g_desired = cfg;
+  if (g_task == nullptr) {
+    return OpenPortLocked(cfg);
+  }
+  // Close/reopen on va_reader after uart_read_bytes returns. Doing it here
+  // (httpd task) panics the UART spinlock and drops SoftAP.
+  g_reconfigure = true;
+  return ESP_OK;
 }
 
 }  // namespace qr_reader

@@ -75,6 +75,9 @@ void State::Init(const viaaccess::RuntimeConfig& cfg) {
   std::lock_guard<std::mutex> lock(mutex_);
   config_ = viaaccess::Normalize(cfg);
   started_at_ = NowUnix();
+  // Boot of an already-claimed unit must not treat the next /setup save as
+  // "just became operational" (that re-entered sync start and confused logs).
+  became_operational_ = config_.configured;
 }
 
 viaaccess::RuntimeConfig State::config() const {

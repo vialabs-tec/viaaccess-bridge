@@ -46,7 +46,7 @@ The map below also avoids the strapping pins (0, 3, 45, 46), the native USB pair
 | Exit button (REX) | 12 | active low; **disabled by default** until enabled in Fiação |
 | Status LED | GPIO 38 (WS2812 onboard) | KY-016 on 4/5/6 optional |
 | Buzzer | 7 | 3-pin module, low-level trigger on I/O |
-| Reader UART RX | 17 | to the module TX, 9600 8N1 |
+| Reader UART RX | 17 | to the module TX, 9600 8N1. **Disabled by default** until Fiação enables the reader (a floating RX false-scans). |
 | Reader UART TX | 18 | to the module RX, 9600 8N1 |
 | RTC SDA / SCL | 8 / 9 | I2C, DS3231 at 0x68 |
 
@@ -253,6 +253,13 @@ when a physical exit button is wired; turn on Simular for bench / BOOT 2-click u
 Do not use BOOT as the production exit button; field REX stays on GPIO 12. The
 RST button only resets the chip and is not read by firmware.
 
+The UART QR reader is **off by default** for the same reason: GPIO 17 floating
+without an EP8280L injects noise that Identity rejects (`INVALID_TOKEN`) and the
+buzzer treats as a failed scan. Enable it under **Fiação** when the module is
+wired. UART scans are also ignored while SoftAP `viaaccess-setup` is up (BOOT
+3-click / first boot), so the technician's phone in front of the lens does not
+redeem or beep. `POST /scan` still works for homologation.
+
 ### Status LED (onboard WS2812 by default)
 
 The ESP32-S3-DevKitC-1 already has an addressable RGB LED. The appliance uses it
@@ -362,7 +369,7 @@ main/                       ESP-IDF application
   wifi_manager.cpp          SoftAP portal, station
   clock_service.cpp         DS3231 at boot, SNTP once online, clock trust
   ds3231_driver.cpp         I2C transport for the battery-backed clock
-  http_server.cpp           local HTTP API on :80 (captive) + :3710 (+ optional HTTPS :443)
+  http_server.cpp           local HTTP API on :80 (captive) + :3710; HTTPS :443 on LAN only
   captive_dns.cpp           wildcard DNS while SoftAP is up
   identity_client.cpp       redeem, claim, policy, device-config, commands
   scan_service.cpp          the single passage pipeline
@@ -674,10 +681,11 @@ After claim, mutating `/api/setup*` requires:
    and STA is online dismisses it immediately.
 3. **URL on SoftAP** — join `viaaccess-setup`. Captive DNS + HTTP `:80` should
    open the setup sheet. Fallback `http://192.168.4.1/setup` (`Host: 192.168.4.1`).
-   SoftAP uses **HTTP on purpose**: mobile browsers often hard-fail self-signed
-   HTTPS on captive SoftAP networks (“site unavailable”). Scripts/homologate keep
-   `:3710`. Optional HTTPS on `:443` (`https://192.168.4.1/setup`, `curl -k`) for
-   LAN/scripts. `*.local` / STA IP stay **read-only** even while SoftAP is active.
+   SoftAP uses **HTTP on purpose**: `:443` is not bound while the portal is up
+   (a failed TLS handshake makes iOS skip the captive sheet). After SoftAP
+   closes, optional HTTPS on `:443` (`https://viaaccess.local/setup`, `curl -k`)
+   is for LAN/scripts. Scripts/homologate keep `:3710`. `*.local` / STA IP stay
+   **read-only** even while SoftAP is active.
 
 ## Next evolution
 

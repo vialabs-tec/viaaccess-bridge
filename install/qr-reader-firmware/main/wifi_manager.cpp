@@ -18,6 +18,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "http_server.hpp"
 #include "lwip/ip4_addr.h"
 #include "lwip/sockets.h"
 #include "sync_task.hpp"
@@ -234,6 +235,7 @@ esp_err_t SetApMode(bool enable) {
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_netif_dhcps_stop(g_ap_netif));
   }
   RefreshPortalNetworking();
+  http_server::RefreshLanHttps();
   if (!enable) {
     ScheduleBeaconStart();
   }

@@ -1,7 +1,8 @@
 // Local HTTP surface: :80 (captive portal + phones), :3710 by default
 // (homologate / Identity scripts), optional HTTPS on :443 with a factory
-// self-signed cert for LAN (`curl -k`). SoftAP phones must use HTTP — mobile
-// browsers often hard-fail self-signed TLS on captive SoftAP networks.
+// self-signed cert for LAN (`curl -k`) only while SoftAP is down. SoftAP
+// phones must use HTTP — a dead TLS handshake on :443 makes iOS skip the
+// captive sheet.
 //
 // Ports internal/server/http.go: same routes, same status codes and the same
 // Portuguese error bodies, so scripts/homologate.sh and the dashboard cannot
@@ -18,5 +19,9 @@ esp_err_t Start();
 
 // ApplyPort restarts the listener when Identity or /setup changes httpPort.
 esp_err_t ApplyPort(int port);
+
+// RefreshLanHttps stops :443 while SoftAP is up and starts it again on STA-only
+// LAN. Deferred so Wi-Fi event / HTTP workers are not blocked on mbedtls.
+esp_err_t RefreshLanHttps();
 
 }  // namespace http_server

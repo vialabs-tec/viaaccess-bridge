@@ -42,8 +42,9 @@ namespace http_server {
 namespace {
 
 constexpr const char* kTag = "http";
-// SoftAP phones need cleartext HTTP; self-signed HTTPS on SoftAP is blocked by
-// many mobile browsers. HTTPS stays available on 443 for LAN / curl -k.
+// SoftAP phones need cleartext HTTP. Binding :443 while SoftAP is up accepts
+// TCP then fails TLS (factory self-signed cert), which makes iOS skip the
+// captive sheet. HTTPS stays on 443 only while STA-only for LAN / curl -k.
 constexpr int kHttpsPort = 443;
 constexpr int kCaptiveHttpPort = 80;
 
@@ -57,6 +58,7 @@ httpd_handle_t g_captive_http = nullptr;
 int g_port = viaaccess::kDefaultHttpPort;
 int g_pending_port = 0;
 esp_timer_handle_t g_restart_timer = nullptr;
+esp_timer_handle_t g_https_timer = nullptr;
 
 const char* StatusLine(int status) {
   switch (status) {
@@ -415,6 +417,22 @@ bool ApplyHardwareOverrides(const cJSON* root, viaaccess::RuntimeConfig* cfg) {
     cfg->status_led.active_high = flag;
     touched = true;
   }
+  if (JsonBool(root, "qrReaderEnabled", &flag)) {
+    cfg->qr_reader.enabled = flag;
+    touched = true;
+  }
+  if (JsonInt(root, "qrUartRxPin", &number) && number > 0) {
+    cfg->qr_reader.rx_pin = number;
+    touched = true;
+  }
+  if (JsonInt(root, "qrUartTxPin", &number) && number > 0) {
+    cfg->qr_reader.tx_pin = number;
+    touched = true;
+  }
+  if (JsonInt(root, "qrUartBaud", &number) && number > 0) {
+    cfg->qr_reader.baud = number;
+    touched = true;
+  }
   return touched;
 }
 
@@ -640,6 +658,7 @@ esp_err_t HandleSetupStatus(httpd_req_t* req) {
   cJSON_AddNumberToObject(hardware, "statusLedGreenPin", cfg.status_led.green_pin);
   cJSON_AddNumberToObject(hardware, "statusLedBluePin", cfg.status_led.blue_pin);
   cJSON_AddBoolToObject(hardware, "statusLedActiveHigh", cfg.status_led.active_high);
+  cJSON_AddBoolToObject(hardware, "qrReaderEnabled", cfg.qr_reader.enabled);
   cJSON_AddNumberToObject(hardware, "qrUartRxPin", cfg.qr_reader.rx_pin);
   cJSON_AddNumberToObject(hardware, "qrUartTxPin", cfg.qr_reader.tx_pin);
   cJSON_AddNumberToObject(hardware, "qrUartBaud", cfg.qr_reader.baud);
@@ -1093,11 +1112,16 @@ esp_err_t RegisterCaptiveRoutes(httpd_handle_t server) {
   return httpd_register_err_handler(server, HTTPD_404_NOT_FOUND, HandleCaptive404);
 }
 
-void StopServers() {
-  if (g_https_server != nullptr) {
-    httpd_ssl_stop(g_https_server);
-    g_https_server = nullptr;
+void StopHttpsServer() {
+  if (g_https_server == nullptr) {
+    return;
   }
+  httpd_ssl_stop(g_https_server);
+  g_https_server = nullptr;
+}
+
+void StopServers() {
+  StopHttpsServer();
   if (g_captive_http != nullptr) {
     httpd_stop(g_captive_http);
     g_captive_http = nullptr;
@@ -1109,6 +1133,11 @@ void StopServers() {
 }
 
 esp_err_t StartHttpsServer() {
+  if (wifi::portal_active()) {
+    ESP_LOGI(kTag, "HTTPS :%d skipped while SoftAP is up (phones use HTTP :%d)", kHttpsPort,
+             kCaptiveHttpPort);
+    return ESP_OK;
+  }
   if (g_https_server != nullptr) {
     return ESP_OK;
   }
@@ -1130,7 +1159,7 @@ esp_err_t StartHttpsServer() {
 
   esp_err_t err = httpd_ssl_start(&g_https_server, &conf);
   if (err != ESP_OK) {
-    ESP_LOGW(kTag, "HTTPS :%d unavailable: %s (SoftAP still uses HTTP :%d)", kHttpsPort,
+    ESP_LOGW(kTag, "HTTPS :%d unavailable: %s (LAN HTTP :%d still up)", kHttpsPort,
              esp_err_to_name(err), g_port);
     g_https_server = nullptr;
     return ESP_OK;
@@ -1141,8 +1170,7 @@ esp_err_t StartHttpsServer() {
     g_https_server = nullptr;
     return ESP_OK;
   }
-  ESP_LOGI(kTag, "HTTPS listening on port %d (self-signed; SoftAP phones should use HTTP)",
-           kHttpsPort);
+  ESP_LOGI(kTag, "HTTPS listening on port %d (self-signed; LAN / curl -k only)", kHttpsPort);
   return ESP_OK;
 }
 
@@ -1212,8 +1240,19 @@ esp_err_t StartOn(int port) {
   }
   g_port = port;
   ESP_LOGI(kTag, "HTTP listening on port %d (scripts / homologate)", port);
+  return StartHttpsServer();
+}
+
+void ApplyLanHttps(void* /*argument*/) {
+  if (wifi::portal_active()) {
+    if (g_https_server != nullptr) {
+      StopHttpsServer();
+      ESP_LOGI(kTag, "HTTPS :%d stopped while SoftAP is up (phones use HTTP :%d)", kHttpsPort,
+               kCaptiveHttpPort);
+    }
+    return;
+  }
   StartHttpsServer();
-  return ESP_OK;
 }
 
 void RestartOnPendingPort(void* /*argument*/) {
@@ -1263,6 +1302,27 @@ esp_err_t ApplyPort(int port) {
   }
   esp_timer_stop(g_restart_timer);
   return esp_timer_start_once(g_restart_timer, 500 * 1000);
+}
+
+esp_err_t RefreshLanHttps() {
+  if (g_http_server == nullptr) {
+    return ESP_OK;
+  }
+  if (g_https_timer == nullptr) {
+    const esp_timer_create_args_t args = {
+        .callback = ApplyLanHttps,
+        .arg = nullptr,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "https_lan",
+        .skip_unhandled_events = true,
+    };
+    const esp_err_t err = esp_timer_create(&args, &g_https_timer);
+    if (err != ESP_OK) {
+      return err;
+    }
+  }
+  esp_timer_stop(g_https_timer);
+  return esp_timer_start_once(g_https_timer, 100 * 1000);
 }
 
 }  // namespace http_server

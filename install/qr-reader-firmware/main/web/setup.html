@@ -141,6 +141,27 @@
             </p>
           </fieldset>
           <fieldset>
+            <legend>Leitor de QR (UART)</legend>
+            <label class="check">
+              <input name="qrReaderEnabled" type="checkbox" />
+              <span>Módulo TTL no UART (EP8280L ou similar)</span>
+            </label>
+            <label>GPIO RX (módulo TX)
+              <input name="qrUartRxPin" type="number" value="17" min="1" />
+            </label>
+            <label>GPIO TX (módulo RX)
+              <input name="qrUartTxPin" type="number" value="18" min="1" />
+            </label>
+            <label>Baud
+              <input name="qrUartBaud" type="number" value="9600" min="1200" />
+            </label>
+            <p style="margin:0.5rem 0 0;font-size:0.75rem;color:#9aa7b5;line-height:1.4">
+              Desligado por padrão. Sem módulo, o RX flutuante gera scans falsos
+              (buzzer de falha e erro de redeem). Ative só com o leitor ligado.
+              <code>POST /scan</code> continua válido para homologação.
+            </p>
+          </fieldset>
+          <fieldset>
             <legend>Buzzer</legend>
             <label class="check">
               <input name="buzzerEnabled" type="checkbox" checked />
@@ -212,7 +233,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
-          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 (opcional, desligado) · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
+          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 (opcional, desligado) · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 (opcional, desligado) · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
           Para alterar GPIO, LED ou buzzer, use a aba <strong>Fiação</strong> depois.
         </div>
         <div class="actions">
@@ -244,7 +265,7 @@
         </label>
         <div class="factory">
           <strong>Mapa de fábrica ESP32-S3 (aplicado automaticamente)</strong><br />
-          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 (opcional, desligado) · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
+          Relé GPIO 10 (gatilho de nível baixo) · Sensor porta GPIO 11 · Botão saída GPIO 12 (opcional, desligado) · Buzzer GPIO 7 · LED status WS2812 GPIO 38 (DevKit) · Leitor UART RX 17 / TX 18 (opcional, desligado) · Relógio DS3231 SDA 8 / SCL 9 (opcional)<br />
           Para alterar GPIO, LED ou buzzer, use a aba <strong>Fiação</strong>.
         </div>
         <label class="check">
@@ -360,10 +381,12 @@
     let hardwarePrefilled = false;
     const numberFields = ['relayGpioPin', 'relayPulseMs', 'doorContactGpioPin',
       'exitButtonGpioPin', 'buzzerGpioPin', 'statusLedWs2812Pin', 'statusLedBrightness',
-      'statusLedRedPin', 'statusLedGreenPin', 'statusLedBluePin'];
+      'statusLedRedPin', 'statusLedGreenPin', 'statusLedBluePin',
+      'qrUartRxPin', 'qrUartTxPin', 'qrUartBaud'];
     const flagFields = ['relayEnabled', 'relayActiveHigh', 'doorContactEnabled',
       'doorContactSimulated', 'exitButtonEnabled', 'exitButtonSimulated',
-      'buzzerEnabled', 'buzzerActiveHigh', 'statusLedEnabled', 'statusLedActiveHigh'];
+      'buzzerEnabled', 'buzzerActiveHigh', 'statusLedEnabled', 'statusLedActiveHigh',
+      'qrReaderEnabled'];
 
     function prefillHardware(hardware, mdnsHostname) {
       if (hardwarePrefilled || !hardware) return;
@@ -566,6 +589,10 @@
         statusLedGreenPin: Number(fd.get('statusLedGreenPin') || 5),
         statusLedBluePin: Number(fd.get('statusLedBluePin') || 6),
         statusLedActiveHigh: fd.get('statusLedActiveHigh') === 'on',
+        qrReaderEnabled: fd.get('qrReaderEnabled') === 'on',
+        qrUartRxPin: Number(fd.get('qrUartRxPin') || 17),
+        qrUartTxPin: Number(fd.get('qrUartTxPin') || 18),
+        qrUartBaud: Number(fd.get('qrUartBaud') || 9600),
         ...mdnsPayload(fd),
       };
     }

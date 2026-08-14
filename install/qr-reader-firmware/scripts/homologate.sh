@@ -12,7 +12,7 @@ set -euo pipefail
 READER_URL="${READER_URL:-http://viaaccess.local:3710}"
 IDENTITY_URL="${IDENTITY_URL:-}"
 
-# Optional HTTPS :443 uses a factory self-signed cert.
+# Optional HTTPS :443 (LAN only, SoftAP down) uses a factory self-signed cert.
 CURL_INSECURE=()
 if [[ "$READER_URL" == https://* ]]; then
   CURL_INSECURE=(-k)

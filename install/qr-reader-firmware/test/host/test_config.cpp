@@ -80,6 +80,7 @@ VA_TEST(FactoryHardwareDefaultsForEsp32s3) {
   CHECK_EQ(cfg.buzzer.gpio_pin, 7);
   // Low-level I/O, matching the common 3-pin module (idle HIGH = silent).
   CHECK(!cfg.buzzer.active_high);
+  CHECK(!cfg.qr_reader.enabled);
   CHECK_EQ(cfg.qr_reader.rx_pin, 17);
   CHECK_EQ(cfg.qr_reader.tx_pin, 18);
 }

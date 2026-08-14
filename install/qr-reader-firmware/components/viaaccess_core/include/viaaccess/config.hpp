@@ -165,8 +165,10 @@ struct WifiConfig {
 };
 
 // TTL/UART barcode module (EP8280L configured out of USB-KBW into TTL).
+// Off until Fiação enables it: a floating RX pin otherwise false-scans
+// (Identity INVALID_TOKEN + fail beeps) whenever Wi-Fi is busy.
 struct QrReaderConfig {
-  bool enabled = true;
+  bool enabled = false;
   int uart_port = kDefaultQrUartPort;
   int rx_pin = kDefaultQrUartRxPin;
   int tx_pin = kDefaultQrUartTxPin;
